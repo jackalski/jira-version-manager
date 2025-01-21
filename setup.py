@@ -30,7 +30,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'jira-version-manager=jira_version_manager.main:main',
+            'jira-version-manager=jira_version_manager.version_manager:main',
         ],
     },
     author="Piotr Szmitkowski",
@@ -38,13 +38,21 @@ setup(
     description="A tool to manage Jira versions",
     long_description=open('README.md').read() if os.path.exists('README.md') else '',
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/jira-version-manager",
+    url="https://github.com/pszmitkowski/jira-version-manager",
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+        "Topic :: Office/Business",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.8',
 )
 
 # Create sample configuration file during installation
