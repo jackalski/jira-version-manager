@@ -17,7 +17,7 @@ SAMPLE_CONFIG = {
         "PROJECT2": ["intake"],               # Uses only intake format
         # PROJECT3 not specified - will use standard format by default
     },
-    "verify_ssl": true
+    "jira_verify_ssl": True
 }
 
 def create_sample_config():
