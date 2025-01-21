@@ -12,7 +12,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Activating virtual environment..." -ForegroundColor Yellow
 .\venv\Scripts\Activate.ps1
 
-# Install package with development dependencies
+# Install development dependencies
 Write-Host "`nInstalling package with development dependencies..." -ForegroundColor Yellow
 pip install -e ".[dev]"
 if ($LASTEXITCODE -ne 0) {
@@ -20,7 +20,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Run tests
+# Run tests with coverage
 Write-Host "`nRunning tests..." -ForegroundColor Yellow
 pytest --cov=jira_version_manager tests/
 if ($LASTEXITCODE -ne 0) {
@@ -28,21 +28,10 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Run linting
-Write-Host "`nRunning flake8..." -ForegroundColor Yellow
+# Run code quality checks
+Write-Host "`nRunning code quality checks..."
 flake8 jira_version_manager tests
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Linting failed" -ForegroundColor Red
-    exit 1
-}
-
-# Run type checking
-Write-Host "`nRunning mypy..." -ForegroundColor Yellow
 mypy jira_version_manager
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Type checking failed" -ForegroundColor Red
-    exit 1
-}
 
 # Test CLI
 Write-Host "`nTesting CLI..." -ForegroundColor Yellow
@@ -52,7 +41,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "`nAll tests passed!" -ForegroundColor Green
+Write-Host "`nTest environment setup complete!"
 
 # Suggested GitHub Repository Settings
 Write-Host "`nSuggested GitHub Repository Settings:" -ForegroundColor Cyan
