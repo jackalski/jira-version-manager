@@ -203,4 +203,50 @@ def test_create_version_already_exists(mock_get, mock_post, manager):
     manager.create_version("TEST1", "1.0.0")
     
     # Verify that post was not called (version not created)
-    mock_post.assert_not_called() 
+    mock_post.assert_not_called()
+
+def test_init_ssl_verification_from_config():
+    with patch.dict('os.environ', {
+        'JIRA_BASE_URL': 'https://jira.example.com',
+        'JIRA_API_TOKEN': 'test-token',
+        'JIRA_PROJECT_KEYS': 'TEST1,TEST2',
+        'JIRA_VERSION_FORMATS': '{}.W{:02d}.{}.{:02d}.{:02d}',
+        'JIRA_VERIFY_SSL': 'false'
+    }):
+        manager = JiraVersionManager()
+        assert manager.verify_ssl is False
+
+def test_init_ssl_verification_from_parameter():
+    with patch.dict('os.environ', {
+        'JIRA_BASE_URL': 'https://jira.example.com',
+        'JIRA_API_TOKEN': 'test-token',
+        'JIRA_PROJECT_KEYS': 'TEST1,TEST2',
+        'JIRA_VERSION_FORMATS': '{}.W{:02d}.{}.{:02d}.{:02d}',
+        'JIRA_VERIFY_SSL': 'true'
+    }):
+        manager = JiraVersionManager(verify_ssl=False)
+        assert manager.verify_ssl is False
+
+@patch('requests.request')
+def test_make_request_with_ssl_verification(mock_request):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_request.return_value = mock_response
+    
+    manager = JiraVersionManager(verify_ssl=False)
+    manager._make_request('GET', 'https://example.com')
+    
+    args, kwargs = mock_request.call_args
+    assert kwargs['verify'] is False
+
+@patch('requests.request')
+def test_make_request_with_ssl_verification_enabled(mock_request):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_request.return_value = mock_response
+    
+    manager = JiraVersionManager(verify_ssl=True)
+    manager._make_request('GET', 'https://example.com')
+    
+    args, kwargs = mock_request.call_args
+    assert kwargs['verify'] is True 

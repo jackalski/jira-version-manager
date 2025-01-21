@@ -11,6 +11,7 @@ A Python tool to manage Jira versions, supporting automatic version creation, li
 - Support for multiple version name formats
 - Dry-run mode for safe testing
 - Debug mode for troubleshooting
+- SSL verification control for self-signed certificates
 
 ## Installation
 
@@ -36,6 +37,7 @@ The tool can be configured in three ways (in order of precedence):
    JIRA_API_TOKEN="your-api-token"
    JIRA_PROJECT_KEYS="PROJECT1,PROJECT2"
    JIRA_VERSION_FORMATS="{}.W{:02d}.{}.{:02d}.{:02d},{}.INTAKE.W{:02d}.{}.{:02d}.{:02d}"
+   JIRA_VERIFY_SSL="false"  # Optional: disable SSL verification
    ```
 
 2. Configuration file (`~/.jira_version_manager.json`):
@@ -47,13 +49,20 @@ The tool can be configured in three ways (in order of precedence):
      "version_formats": [
        "{}.W{:02d}.{}.{:02d}.{:02d}",
        "{}.INTAKE.W{:02d}.{}.{:02d}.{:02d}"
-     ]
+     ],
+     "verify_ssl": false
    }
    ```
 
 3. Default values (not recommended for production)
 
 ## Usage
+
+### Common Options
+All commands support the following options:
+- `--debug`: Enable debug mode
+- `--dry-run`: Simulate actions without making changes
+- `--no-verify-ssl`: Disable SSL certificate verification (useful for self-signed certificates)
 
 ### Show Configuration
 ```bash
@@ -62,7 +71,11 @@ jira-version-manager info
 
 ### List Versions
 ```bash
+# With SSL verification
 jira-version-manager list PROJECT1
+
+# Without SSL verification
+jira-version-manager list PROJECT1 --no-verify-ssl
 ```
 
 ### Create Versions
