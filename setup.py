@@ -28,6 +28,17 @@ setup(
     install_requires=[
         'requests>=2.25.0',
     ],
+    extras_require={
+        'dev': [
+            'pytest>=7.0.0',
+            'pytest-cov>=4.0.0',
+            'mypy>=1.0.0',
+            'flake8>=6.0.0',
+            'black>=23.0.0',
+            'build>=1.0.0',
+            'twine>=4.0.0',
+        ],
+    },
     entry_points={
         'console_scripts': [
             'jira-version-manager=jira_version_manager.version_manager:main',

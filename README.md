@@ -1,131 +1,134 @@
 # Jira Version Manager
 
-A command-line tool to automate the creation of Jira versions following specific naming patterns. This tool is particularly useful for teams that need to create multiple versions across different projects with consistent naming conventions.
+A Python tool to manage Jira versions, supporting automatic version creation, listing, and deletion.
 
 ## Features
 
-- Create versions for multiple Jira projects
-- Support for custom version naming patterns
-- Create versions for specific dates or next month's weekdays (Monday-Thursday)
-- Dry-run mode to preview changes
-- Configuration via file or environment variables
+- Create versions for specific dates or next month's weekdays (Mon-Thu)
+- List existing versions for a project
+- Delete versions with optional issue migration
+- Check for existing versions and their associated issues
+- Support for multiple version name formats
+- Dry-run mode for safe testing
 - Debug mode for troubleshooting
 
 ## Installation
 
-To install the Jira Version Manager, run the following command:
-
+### From PyPI
 ```bash
 pip install jira-version-manager
 ```
 
+### From Source
+```bash
+git clone https://github.com/pszmitkowski/jira-version-manager.git
+cd jira-version-manager
+pip install -e .
+```
+
 ## Configuration
 
-The tool can be configured in multiple ways (in order of precedence):
+The tool can be configured in three ways (in order of precedence):
 
-1. Environment variables
-2. Configuration file (`~/.jira_version_manager.json`)
-3. Default values
+1. Environment variables:
+   ```bash
+   JIRA_BASE_URL="https://your-jira-instance.com"
+   JIRA_API_TOKEN="your-api-token"
+   JIRA_PROJECT_KEYS="PROJECT1,PROJECT2"
+   JIRA_VERSION_FORMATS="{}.W{:02d}.{}.{:02d}.{:02d},{}.INTAKE.W{:02d}.{}.{:02d}.{:02d}"
+   ```
 
-### Environment Variables
+2. Configuration file (`~/.jira_version_manager.json`):
+   ```json
+   {
+     "jira_base_url": "https://your-jira-instance.com",
+     "jira_api_token": "your-api-token",
+     "project_keys": ["PROJECT1", "PROJECT2"],
+     "version_formats": [
+       "{}.W{:02d}.{}.{:02d}.{:02d}",
+       "{}.INTAKE.W{:02d}.{}.{:02d}.{:02d}"
+     ]
+   }
+   ```
 
-- `JIRA_BASE_URL`: Your Jira instance URL
-- `JIRA_API_TOKEN`: Your Jira API token
-- `JIRA_PROJECT_KEYS`: Comma-separated list of project keys
-- `JIRA_VERSION_FORMATS`: Comma-separated list of version format patterns
-
-### Configuration File
-
-A sample configuration file will be created at `~/.jira_version_manager.json` during installation. You can modify it according to your needs:
-
-```json
-{
-"jira_base_url": "https://your-jira-instance.com",
-"jira_api_token": "your-api-token",
-"project_keys": ["PROJECT1", "PROJECT2"],
-"version_formats": [
-"{}.W{:02d}.{}.{:02d}.{:02d}",
-"{}.INTAKE.W{:02d}.{}.{:02d}.{:02d}"
-]
-}
-```
+3. Default values (not recommended for production)
 
 ## Usage
 
-### Basic Usage
-
-Create versions for next month's weekdays for all configured projects:
-
+### Show Configuration
 ```bash
-jira-version-manager
+jira-version-manager info
 ```
 
-
-### Create Custom Version
-
-Create a version for a specific project and date:
-
+### List Versions
 ```bash
-jira-version-manager --custom-version PROJECT1 2024-03-15
+jira-version-manager list PROJECT1
 ```
 
-### Dry Run
+### Create Versions
 
-Preview version creation without making actual changes:
-
+Create versions for next month (default behavior):
 ```bash
-jira-version-manager --dry-run
+jira-version-manager create
 ```
 
-### Debug Mode
-
-Enable debug output:
-
+Create version for specific date:
 ```bash
-jira-version-manager --debug
+jira-version-manager create --project-key PROJECT1 --date 2024-02-01
 ```
 
-### Display Configuration
-
-Show current configuration:
-
+Use dry-run mode to test:
 ```bash
-jira-version-manager --info
+jira-version-manager create --dry-run --project-key PROJECT1 --date 2024-02-01
 ```
 
-## Version Format Patterns
+### Delete Versions
 
-The tool supports custom version format patterns. The default patterns create versions like:
-- `PROJECT1.W12.2024.03.15`
-- `PROJECT1.INTAKE.W12.2024.03.15`
+Delete a version:
+```bash
+jira-version-manager delete PROJECT1 "1.0.0"
+```
 
-Format placeholders:
-- First `{}`: Project key
-- `W{:02d}`: Week number (zero-padded)
-- Following `{}`: Year
-- `{:02d}`: Month (zero-padded)
-- Last `{:02d}`: Day (zero-padded)
+Delete and move issues to another version:
+```bash
+jira-version-manager delete PROJECT1 "1.0.0" --move-to "1.0.1"
+```
 
 ## Development
 
-To set up the development environment:
-
-1. Clone the repository:
-
+### Setup Development Environment
 ```bash
-git clone https://github.com/jackalski/jira-version-manager.git
+# Clone the repository
+git clone https://github.com/pszmitkowski/jira-version-manager.git
 cd jira-version-manager
+
+# Create and activate virtual environment (Windows PowerShell)
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Install development dependencies
+pip install -e ".[dev]"
 ```
 
-2. Install in development mode:
-
+### Running Tests
 ```bash
-pip install -e .
+pytest
+```
+
+With coverage:
+```bash
+pytest --cov=jira_version_manager tests/
+```
+
+### Code Style
+```bash
+flake8 jira_version_manager tests
+mypy jira_version_manager
 ```
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Author
 
