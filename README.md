@@ -22,7 +22,7 @@ pip install jira-version-manager
 
 ### From Source
 ```bash
-git clone https://github.com/pszmitkowski/jira-version-manager.git
+git clone https://github.com/jackalski/jira-version-manager.git
 cd jira-version-manager
 pip install -e .
 ```
@@ -36,27 +36,45 @@ The tool can be configured in three ways (in order of precedence):
    JIRA_BASE_URL="https://your-jira-instance.com"
    JIRA_API_TOKEN="your-api-token"
    JIRA_PROJECT_KEYS="PROJECT1,PROJECT2"
-   JIRA_VERSION_FORMATS='{"standard": "{}.W{:02d}.{}.{:02d}.{:02d}", "intake": "{}.INTAKE.W{:02d}.{}.{:02d}.{:02d}", "release": "{}.RELEASE.{}.{:02d}.{:02d}"}'
+   JIRA_VERSION_FORMATS='{"standard": "{PROJECT}.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}", "intake": "{PROJECT}.INTAKE.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}", "release": "{PROJECT}.{YEAR}.{MONTH:02d}.{DAY:02d}.RELEASE"}'
    JIRA_VERIFY_SSL="false"  # Optional: disable SSL verification
-   JIRA_PROJECT_FORMATS='{"PROJECT1": ["standard", "release"], "PROJECT2": ["intake"]}'  # Optional: project-specific formats
+   JIRA_PROJECT_FORMATS='{"default": ["standard"], "PROJECT1": ["standard", "release"], "PROJECT2": ["intake"]}'  # Optional: project-specific formats
    ```
 
-2. Configuration file (`~/.jira_version_manager.json`):
+2. Configuration file (located in the user's data directory):
+   - Windows: `%LOCALAPPDATA%\1500100xyz\jira-version-manager\config.json`
+   - Linux: `~/.local/share/jira-version-manager/config.json`
+   - macOS: `~/Library/Application Support/jira-version-manager/config.json`
+
+   Example configuration:
    ```json
    {
      "jira_base_url": "https://your-jira-instance.com",
      "jira_api_token": "your-api-token",
      "project_keys": ["PROJECT1", "PROJECT2"],
      "version_formats": {
-       "standard": "{}.W{:02d}.{}.{:02d}.{:02d}",
-       "intake": "{}.INTAKE.W{:02d}.{}.{:02d}.{:02d}",
-       "release": "{}.RELEASE.{}.{:02d}.{:02d}"
+       "standard": "{PROJECT}.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}",
+       "intake": "{PROJECT}.INTAKE.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}",
+       "release": "{PROJECT}.{YEAR}.{MONTH:02d}.{DAY:02d}.RELEASE"
      },
-     "verify_ssl": false,
      "project_formats": {
+       "default": ["standard"],
        "PROJECT1": ["standard", "release"],
        "PROJECT2": ["intake"]
-     }
+     },
+     "issue_types": {
+       "default": ["Epic"],
+       "PROJECT1": ["Epic", "Story"],
+       "PROJECT2": ["Epic", "Task"]
+     },
+     "release_days": {
+       "default": [0, 1, 2, 3],
+       "PROJECT1": {
+         "days": [0, 2, 4],
+         "frequency": 1
+       }
+     },
+     "jira_verify_ssl": false
    }
    ```
 
@@ -69,26 +87,33 @@ The tool can be configured in three ways (in order of precedence):
 - `project_keys`: List of Jira project keys to manage
 - `version_formats`: Dictionary of named version format patterns
 - `project_formats`: Map of project keys to lists of format names to use
+- `issue_types`: Configuration for issue types to show in detailed view
+  - `default`: Default issue types to show (defaults to ["Epic"])
+  - Per-project settings override the default
+- `release_days`: Configuration for version creation days
+  - `default`: Default days (0=Monday to 6=Sunday)
+  - Per-project settings with custom days and frequency
 - `verify_ssl`: Whether to verify SSL certificates (default: true)
 
 ### Version Format Patterns
 
-Version formats are defined as named patterns in the `version_formats` configuration. Each pattern uses Python's string formatting with the following placeholders:
-- `{}` - Project key (first placeholder)
-- `{:02d}` - Week number (padded with zero)
-- `{}` - Year
-- `{:02d}` - Month (padded with zero)
-- `{:02d}` - Day (padded with zero)
+Version formats are defined as named patterns in the `version_formats` configuration. Each pattern uses named variables:
+- `{PROJECT}` - Project key
+- `{WEEK}` - Week number (can use :02d for zero padding)
+- `{YEAR}` - Year
+- `{MONTH}` - Month (can use :02d for zero padding)
+- `{DAY}` - Day (can use :02d for zero padding)
 
-The "standard" format must always be defined as it serves as the default format when no other format is specified.
+The variables can be used in any order and combined with static text. The "standard" format must always be defined as it serves as the default format when no other format is specified.
 
 Example format definitions:
 ```json
 {
   "version_formats": {
-    "standard": "{}.W{:02d}.{}.{:02d}.{:02d}",         // PROJECT1.W01.2024.01.15
-    "intake": "{}.INTAKE.W{:02d}.{}.{:02d}.{:02d}",    // PROJECT1.INTAKE.W01.2024.01.15
-    "release": "{}.RELEASE.{}.{:02d}.{:02d}"           // PROJECT1.RELEASE.2024.01.15
+    "standard": "{PROJECT}.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}",         // PROJECT1.W01.2024.01.15
+    "intake": "{PROJECT}.INTAKE.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}",    // PROJECT1.INTAKE.W01.2024.01.15
+    "release": "{PROJECT}.{YEAR}.{MONTH:02d}.{DAY:02d}.RELEASE",              // PROJECT1.2024.01.15.RELEASE
+    "custom": "V{YEAR}{MONTH:02d}{DAY:02d}-{PROJECT}-W{WEEK:02d}"            // V20240115-PROJECT1-W01
   }
 }
 ```
@@ -100,14 +125,44 @@ You can specify which format patterns to use for each project using the `project
 ```json
 {
   "project_formats": {
-    "PROJECT1": ["standard", "release"],  // Will create two versions using both formats
-    "PROJECT2": ["intake"],               // Will create one version using the intake format
-    "PROJECT3": null                      // Will use the standard format by default
+    "default": ["standard"],                // Default format for all projects
+    "PROJECT1": ["standard", "release"],    // Uses both standard and release formats
+    "PROJECT2": ["intake"]                  // Uses only intake format
   }
 }
 ```
 
-If a project isn't listed in `project_formats` or has no formats specified, it will automatically use the "standard" format. The "standard" format must be defined in `version_formats` as it serves as the default format.
+If a project isn't listed in `project_formats`, it will use the formats specified in `project_formats.default`. If no default is specified, it will use the "standard" format.
+
+### Issue Type Filtering
+
+You can configure which issue types to show in the detailed view:
+
+```json
+{
+  "issue_types": {
+    "default": ["Epic"],                    // Show only Epics by default
+    "PROJECT1": ["Epic", "Story"],          // Show Epics and Stories for PROJECT1
+    "PROJECT2": ["Epic", "Task"]            // Show Epics and Tasks for PROJECT2
+  }
+}
+```
+
+### Release Days Configuration
+
+Configure which days versions should be created for:
+
+```json
+{
+  "release_days": {
+    "default": [0, 1, 2, 3],               // Monday to Thursday by default
+    "PROJECT1": {
+      "days": [0, 2, 4],                   // Monday, Wednesday, Friday
+      "frequency": 1                        // Every week (use 2 for every two weeks)
+    }
+  }
+}
+```
 
 ## Usage
 
@@ -128,7 +183,7 @@ SSL verification can be controlled in three ways (in order of precedence):
 3. Configuration file:
    ```json
    {
-     "verify_ssl": false
+     "jira_verify_ssl": false
    }
    ```
 
@@ -162,6 +217,11 @@ Show all versions (both released and unreleased):
 jira-version-manager list PROJECT1 --show-all
 ```
 
+Show detailed information including issues (filtered by configured issue types):
+```bash
+jira-version-manager list PROJECT1 --detailed
+```
+
 List with SSL verification disabled:
 ```bash
 jira-version-manager list PROJECT1 --no-verify-ssl
@@ -188,69 +248,3 @@ Create version for specific date and formats:
 ```bash
 jira-version-manager create --project-key PROJECT1 --date 2024-02-01 --formats intake,release
 ```
-
-Create versions for specific project using its default formats:
-```bash
-jira-version-manager create --project-key PROJECT1
-```
-
-Use dry-run mode to test:
-```bash
-jira-version-manager create --dry-run --project-key PROJECT1 --formats standard
-```
-
-### Delete Versions
-
-Delete a version:
-```bash
-jira-version-manager delete PROJECT1 "1.0.0"
-```
-
-Delete and move issues to another version:
-```bash
-jira-version-manager delete PROJECT1 "1.0.0" --move-to "1.0.1"
-```
-
-## Development
-
-### Setup Development Environment
-```bash
-# Clone the repository
-git clone https://github.com/pszmitkowski/jira-version-manager.git
-cd jira-version-manager
-
-# Create and activate virtual environment (Windows PowerShell)
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-
-# Install development dependencies
-pip install -e ".[dev]"
-```
-
-### Running Tests
-```bash
-pytest
-```
-
-With coverage:
-```bash
-pytest --cov=jira_version_manager tests/
-```
-
-### Code Style
-```bash
-flake8 jira_version_manager tests
-mypy jira_version_manager
-```
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Author
-
-Piotr Szmitkowski (pszmitkowski@gmail.com)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
