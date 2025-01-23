@@ -529,7 +529,7 @@ class JiraVersionManager:
         except requests.exceptions.RequestException as e:
             raise JiraApiError(f"Error deleting version: {str(e)}")
 
-    def cleanup_versions(self, project_key: Optional[str] = None, include_released: bool = False) -> Dict[str, List[str]]:
+    def cleanup_versions(self, project_key: Optional[str] = None, include_released: bool = False, dry_run: bool = False) -> Dict[str, List[str]]:
         """
         Remove versions that are:
         - More than 1 week in the past
@@ -539,6 +539,7 @@ class JiraVersionManager:
         Args:
             project_key: The Jira project key (if None, cleanup all configured projects)
             include_released: Whether to also remove released versions (default: False)
+            dry_run: If True, only simulate the cleanup without making changes
             
         Returns:
             Dictionary mapping project keys to lists of removed version names
@@ -595,7 +596,8 @@ class JiraVersionManager:
                         continue
                     
                     # If we got here, the version meets all criteria for removal
-                    self.delete_version(version['id'])
+                    if not dry_run:
+                        self.delete_version(version['id'])
                     removed_versions[proj_key].append(version['name'])
                     
                 except Exception as e:
@@ -651,13 +653,14 @@ class JiraVersionManager:
                 else:
                     self.logger.info(f"No issues of types [{', '.join(issue_types)}] assigned")
 
-    def archive_releases(self, project_key: Optional[str] = None, months: Optional[int] = None) -> Dict[str, List[str]]:
+    def archive_releases(self, project_key: Optional[str] = None, months: Optional[int] = None, dry_run: bool = False) -> Dict[str, List[str]]:
         """
         Archive released versions that are older than the specified number of months.
         
         Args:
             project_key: The Jira project key (if None, archive for all configured projects)
             months: Number of months after which to archive releases (if None, use project settings)
+            dry_run: If True, only simulate the archiving without making changes
             
         Returns:
             Dictionary mapping project keys to lists of archived version names
@@ -730,7 +733,8 @@ class JiraVersionManager:
                             'description': new_description,
                             'archived': True
                         }
-                        self._make_request('PUT', url, json=data)
+                        if not dry_run:
+                            self._make_request('PUT', url, json=data)
                         archived_versions[proj_key].append(version['name'])
                     
                 except Exception as e:
@@ -817,18 +821,39 @@ def handle_create_command(manager: JiraVersionManager, args: argparse.Namespace)
     """Handle the create command"""
     projects = [args.project_key] if args.project_key else manager.config['project_keys']
     
+    if args.dry_run:
+        print("DRY RUN: The following versions would be created:")
+    
     for project_key in projects:
         try:
             if args.date:
                 # Create versions for specific date
-                manager.create_versions_for_dates(project_key, [datetime.strptime(args.date, "%Y-%m-%d")], args.debug, args.dry_run, args.formats.split(',') if args.formats else None)
+                date = datetime.strptime(args.date, "%Y-%m-%d")
+                if args.dry_run:
+                    print(f"\n{project_key}:")
+                    formats = args.formats.split(',') if args.formats else None
+                    for format_key in formats or manager.get_project_formats(project_key):
+                        version_name = manager.create_version_name(format_key, project_key, date)
+                        print(f"  - {version_name}")
+                else:
+                    manager.create_versions_for_dates(project_key, [date], args.formats.split(',') if args.formats else None)
             else:
                 # Create versions for next month or current month
                 weekdays = manager.get_weekdays_for_month(project_key, use_next_month=not args.current_month)
-                manager.create_versions_for_dates(project_key, weekdays, args.debug, args.dry_run, args.formats.split(',') if args.formats else None)
-            print(f"Created versions for {project_key}")
+                if args.dry_run:
+                    print(f"\n{project_key}:")
+                    formats = args.formats.split(',') if args.formats else None
+                    for date in weekdays:
+                        for format_key in formats or manager.get_project_formats(project_key):
+                            version_name = manager.create_version_name(format_key, project_key, date)
+                            print(f"  - {version_name}")
+                else:
+                    manager.create_versions_for_dates(project_key, weekdays, args.formats.split(',') if args.formats else None)
+            
+            if not args.dry_run:
+                print(f"Created versions for {project_key}")
         except Exception as e:
-            print(f"Error creating versions for {project_key}: {str(e)}")
+            print(f"Error processing {project_key}: {str(e)}")
 
 def handle_delete_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
     """Handle the delete command"""
@@ -849,31 +874,41 @@ def handle_delete_command(manager: JiraVersionManager, args: argparse.Namespace)
 
 def handle_cleanup_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
     """Handle the cleanup command"""
-    removed = manager.cleanup_versions(args.project_key, args.include_released)
+    if args.dry_run:
+        print("DRY RUN: The following versions would be removed:")
+    
+    # Get versions that would be removed
+    removed = manager.cleanup_versions(args.project_key, args.include_released, args.dry_run)
     
     if any(versions for versions in removed.values()):
-        print("Removed versions:")
+        if not args.dry_run:
+            print("Removed versions:")
         for project, versions in removed.items():
             if versions:
                 print(f"\n{project}:")
                 for version in versions:
                     print(f"  - {version}")
     else:
-        print("No versions were removed.")
+        print("No versions would be removed." if args.dry_run else "No versions were removed.")
 
 def handle_archive_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
     """Handle the archive command"""
-    archived = manager.archive_releases(args.project_key, args.months)
+    if args.dry_run:
+        print("DRY RUN: The following versions would be archived:")
+    
+    # Get versions that would be archived
+    archived = manager.archive_releases(args.project_key, args.months, args.dry_run)
     
     if any(versions for versions in archived.values()):
-        print("Archived versions:")
+        if not args.dry_run:
+            print("Archived versions:")
         for project, versions in archived.items():
             if versions:
                 print(f"\n{project}:")
                 for version in versions:
                     print(f"  - {version}")
     else:
-        print("No versions were archived.")
+        print("No versions would be archived." if args.dry_run else "No versions were archived.")
 
 def main() -> None:
     """Main entry point for the CLI application"""
