@@ -10,6 +10,7 @@ import urllib3
 from urllib.parse import urljoin, quote
 import logging
 from appdirs import user_data_dir
+import re
 
 class JiraApiError(Exception):
     """Custom exception for Jira API errors"""
@@ -193,6 +194,11 @@ class JiraVersionManager:
         response = requests.request(method, url, **kwargs)
         response.raise_for_status()
         return response
+
+    def get_version_formats(self, format_keys: Optional[List[str]] = None) -> List[str]:
+        """Get version formats"""
+        return self.get_project_formats(None, format_keys)
+    
 
     def get_project_formats(self, project_key: str, format_keys: Optional[List[str]] = None) -> List[str]:
         """Get version formats for a specific project"""
@@ -391,14 +397,19 @@ class JiraVersionManager:
         Returns:
             Formatted version name
         """
+        
         week_num = date.isocalendar()[1]
-        return format_str.format(
-            PROJECT=project_key,
-            WEEK=week_num,
-            YEAR=date.year,
-            MONTH=date.month,
-            DAY=date.day
-        )
+        try:
+            return format_str.format(
+                PROJECT=project_key,
+                WEEK=week_num,
+                YEAR=date.year,
+                MONTH=date.month,
+                DAY=date.day
+            )
+        except Exception as e:
+            print(e)
+            return format_str
 
     def create_versions_for_dates(self, project_key: str, dates: List[datetime], debug: bool = False, 
                                 dry_run: bool = False, format_keys: Optional[List[str]] = None) -> None:
@@ -558,47 +569,30 @@ class JiraVersionManager:
                 # Skip if version is released and we're not including released versions
                 if version.get('released', False) and not include_released:
                     continue
-                    
+                
                 # Check if version has a date in its name using our format patterns
                 try:
-                    # Extract date from version name using available formats
-                    version_date = None
-                    for format_name, format_pattern in self.config['version_formats'].items():
-                        try:
-                            # Try to parse the date from the version name
-                            if '.W' in format_pattern:  # Weekly format
-                                parts = version['name'].split('.')
-                                year = int(parts[-3])
-                                month = int(parts[-2])
-                                day = int(parts[-1])
-                                version_date = datetime(year, month, day)
-                                break
-                            else:  # Standard format
-                                parts = version['name'].split('.')
-                                year = int([p for p in parts if len(p) == 4][0])
-                                month = int([p for p in parts if len(p) == 2][0])
-                                day = int([p for p in parts if len(p) == 2][1])
-                                version_date = datetime(year, month, day)
-                                break
-                        except (ValueError, IndexError):
+                    parsed = self.parse_version_name(version['name'])
+                    if parsed:
+                        version_date = datetime(
+                            year=parsed['YEAR'],
+                            month=parsed['MONTH'],
+                            day=parsed['DAY']
+                        )
+                        
+                        # Check if version is more than 1 week old
+                        if (current_date - version_date).days <= 7:
                             continue
-                    
-                    if version_date is None:
-                        continue  # Skip if we couldn't parse the date
-                    
-                    # Check if version is more than 1 week old
-                    if (current_date - version_date).days <= 7:
-                        continue
-                    
-                    # Check if version has any issues
-                    issues = self.get_issues_for_version(proj_key, version['name'])
-                    if issues:
-                        continue
-                    
-                    # If we got here, the version meets all criteria for removal
-                    if not dry_run:
-                        self.delete_version(version['id'])
-                    removed_versions[proj_key].append(version['name'])
+
+                        # Check if version has any issues
+                        issues = self.get_issues_for_version(proj_key, version['name'])
+                        if issues:
+                            continue
+                        
+                        # If we got here, the version meets all criteria for removal
+                        if not dry_run:
+                            self.delete_version(version['id'])
+                        removed_versions[proj_key].append(version['name'])
                     
                 except Exception as e:
                     logging.warning(f"Error processing version {version['name']} for project {proj_key}: {str(e)}")
@@ -695,53 +689,84 @@ class JiraVersionManager:
                     
                 # Check if version has a date in its name using our format patterns
                 try:
-                    # Extract date from version name using available formats
-                    version_date = None
-                    for format_name, format_pattern in self.config['version_formats'].items():
-                        try:
-                            # Try to parse the date from the version name
-                            if '.W' in format_pattern:  # Weekly format
-                                parts = version['name'].split('.')
-                                year = int(parts[-3])
-                                month = int(parts[-2])
-                                day = int(parts[-1])
-                                version_date = datetime(year, month, day)
-                                break
-                            else:  # Standard format
-                                parts = version['name'].split('.')
-                                year = int([p for p in parts if len(p) == 4][0])
-                                month = int([p for p in parts if len(p) == 2][0])
-                                day = int([p for p in parts if len(p) == 2][1])
-                                version_date = datetime(year, month, day)
-                                break
-                        except (ValueError, IndexError):
+                    parsed = self.parse_version_name(version['name'])
+                    if parsed:
+                        version_date = datetime(
+                            year=parsed['YEAR'],
+                            month=parsed['MONTH'],
+                            day=parsed['DAY']
+                        )
+                        
+                        # Check if version is older than cutoff date
+                        if version_date > cutoff_date:
                             continue
-                    
-                    if version_date is None:
-                        continue  # Skip if we couldn't parse the date
-                    
-                    # Check if version is older than cutoff date
-                    if version_date > cutoff_date:
-                        continue
-                    
-                    # Archive the version by updating its description
-                    url = f"{self.config['jira_base_url']}/rest/api/2/version/{version['id']}"
-                    description = version.get('description', '') or ''
-                    if not description.startswith('[ARCHIVED]'):
-                        new_description = f"[ARCHIVED] {description}"
-                        data = {
-                            'description': new_description,
-                            'archived': True
-                        }
-                        if not dry_run:
-                            self._make_request('PUT', url, json=data)
-                        archived_versions[proj_key].append(version['name'])
+                        
+                        # Archive the version by updating its description
+                        url = f"{self.config['jira_base_url']}/rest/api/2/version/{version['id']}"
+                        description = version.get('description', '') or ''
+                        if not description.startswith('[ARCHIVED]'):
+                            new_description = f"[ARCHIVED] {description}"
+                            data = {
+                                'description': new_description,
+                                'archived': True
+                            }
+                            if not dry_run:
+                                self._make_request('PUT', url, json=data)
+                            archived_versions[proj_key].append(version['name'])
                     
                 except Exception as e:
                     logging.warning(f"Error processing version {version['name']} for project {proj_key}: {str(e)}")
                     continue
         
         return archived_versions
+
+    def parse_version_name(self, version_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Parse a version name according to configured formats.
+        
+        Args:
+            version_name: The version name to parse
+            
+        Returns:
+            Dictionary containing parsed components (PROJECT, WEEK, YEAR, MONTH, DAY) 
+            and the matched format, or None if no format matches
+        """
+        # Remove _emergency suffix if present
+        base_name = version_name.split('_')[0]
+        
+        for format_name, format_pattern in self.config['version_formats'].items():
+            try:
+                # Convert format pattern to regex
+                regex_pattern = (
+                    format_pattern
+                    .replace('{PROJECT}', '(?P<PROJECT>[^.]+)')
+                    .replace('{WEEK:02d}', '(?P<WEEK>\d{2})')
+                    .replace('{YEAR}', '(?P<YEAR>\d{4})')
+                    .replace('{MONTH:02d}', '(?P<MONTH>\d{1,2})')
+                    .replace('{DAY:02d}', '(?P<DAY>\d{1,2})')
+                    .replace('.', '\.')
+                )
+                
+                match = re.match(f'^{regex_pattern}$', base_name)
+                if match:
+                    result = match.groupdict()
+                    # Convert numeric fields to integers
+                    for field in ['WEEK', 'YEAR', 'MONTH', 'DAY']:
+                        if field in result:
+                            result[field] = int(result[field])
+
+                    # Add metadata
+                    result['format_name'] = format_name
+                    result['format_pattern'] = format_pattern
+                    result['original_name'] = version_name
+                    result['has_emergency'] = '_emergency' in version_name
+                    
+                    return result
+                    
+            except re.error:
+                continue
+        
+        return None
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser"""
@@ -764,11 +789,11 @@ def create_parser() -> argparse.ArgumentParser:
     
     # Create command
     create_parser = subparsers.add_parser('create', help='Create versions')
-    create_parser.add_argument('--project-key', help='Jira project key')
+    create_parser.add_argument('project_key', nargs='?', help='Jira project key (if not provided, create for all projects)')
     create_parser.add_argument('--date', help='Specific date (YYYY-MM-DD)')
     create_parser.add_argument('--current-month', action='store_true', help='Create versions for current month')
     create_parser.add_argument('--formats', help='Comma-separated list of format names to use')
-    
+
     # Cleanup command
     cleanup_parser = subparsers.add_parser('cleanup', help='Remove old versions with no issues')
     cleanup_parser.add_argument('project_key', nargs='?', help='Jira project key')
@@ -826,34 +851,38 @@ def handle_create_command(manager: JiraVersionManager, args: argparse.Namespace)
     
     for project_key in projects:
         try:
+            formats = args.formats.split(',') if args.formats else None
+            
             if args.date:
                 # Create versions for specific date
                 date = datetime.strptime(args.date, "%Y-%m-%d")
-                if args.dry_run:
-                    print(f"\n{project_key}:")
-                    formats = args.formats.split(',') if args.formats else None
-                    for format_key in formats or manager.get_project_formats(project_key):
-                        version_name = manager.create_version_name(format_key, project_key, date)
-                        print(f"  - {version_name}")
-                else:
-                    manager.create_versions_for_dates(project_key, [date], args.formats.split(',') if args.formats else None)
+                dates = [date]
             else:
-                # Create versions for next month or current month
-                weekdays = manager.get_weekdays_for_month(project_key, use_next_month=not args.current_month)
-                if args.dry_run:
-                    print(f"\n{project_key}:")
-                    formats = args.formats.split(',') if args.formats else None
-                    for date in weekdays:
-                        for format_key in formats or manager.get_project_formats(project_key):
-                            version_name = manager.create_version_name(format_key, project_key, date)
-                            print(f"  - {version_name}")
-                else:
-                    manager.create_versions_for_dates(project_key, weekdays, args.formats.split(',') if args.formats else None)
+                # Get dates for next month or current month
+                dates = manager.get_weekdays_for_month(project_key, use_next_month=not args.current_month)
             
-            if not args.dry_run:
+            if args.dry_run:
+                print(f"\n{project_key}:")
+                for date in dates:
+                    for format_key in formats or manager.get_project_formats(project_key):
+                        try:
+                            version_name = manager.create_version_name(format_key, project_key, date)
+                            # Check if version already exists
+                            if manager.get_version_by_name(project_key, version_name):
+                                print(f"  - {version_name} (already exists)")
+                            else:
+                                print(f"  - {version_name} (would create)")
+                        except ValueError as e:
+                            print(f"  - Error with format {format_key}: {str(e)}")
+            else:
+                manager.create_versions_for_dates(project_key, dates, formats)
                 print(f"Created versions for {project_key}")
+                
         except Exception as e:
             print(f"Error processing {project_key}: {str(e)}")
+            if args.debug:
+                import traceback
+                traceback.print_exc()
 
 def handle_delete_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
     """Handle the delete command"""

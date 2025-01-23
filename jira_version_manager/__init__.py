@@ -4,7 +4,7 @@ Jira Version Manager - A tool to manage Jira versions with support for custom fo
 
 from .version_manager import JiraVersionManager, JiraApiError, ConfigurationError
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 __author__ = "Piotr Szmitkowski"
 __email__ = "pszmitkowski@gmail.com"
 

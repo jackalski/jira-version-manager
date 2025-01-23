@@ -5,14 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.1] - 2024-01-24
+## [0.2.2] - 2025-01-23
+
+### Fixed
+- Fixed issue with version date parsing versions
+- Fixed creation of versions
+- Fixed deletion of versions
+
+## [0.2.1] - 2024-01-23
 
 ### Added
 - Dry-run support for all modification commands
   - Create: Preview versions that would be created
   - Cleanup: Show versions that would be removed
   - Archive: Display versions that would be archived
-  - Simulates actions without making actual changes
+  - Simulates actions without making changes
 - Improved handling of project-wide operations
   - All commands now support operating on all configured projects when no project key is provided
   - Enhanced output formatting for multi-project operations

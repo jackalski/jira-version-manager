@@ -163,6 +163,15 @@ jira-version-manager create --formats standard,release
 jira-version-manager create --project-key PROJECT1 --date 2024-02-01 --formats intake,release
 ```
 
+### Delete Versions
+```bash
+# Delete a version
+jira-version-manager delete PROJECT1 --version-name "PROJECT1.2024.02.01.RELEASE"
+
+# Delete a version and move issues to another version
+jira-version-manager delete PROJECT1 --version-name "PROJECT1.2024.02.01.RELEASE" --move-to "PROJECT1.2024.02.01.RELEASE"
+```
+
 ### Cleanup Versions
 ```bash
 # Clean up versions for all configured projects
