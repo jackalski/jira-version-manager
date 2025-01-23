@@ -1,14 +1,20 @@
 # Jira Version Manager
 
-A Python tool to manage Jira versions, supporting automatic version creation, listing, and deletion.
+A Python tool to manage Jira versions, supporting automatic version creation, listing, cleanup, and archiving.
 
 ## Features
 
-- Create versions for specific dates or next month's weekdays (Mon-Thu)
-- List existing versions for a project
+- Create versions for specific dates or next month's weekdays
+- List existing versions with detailed issue information
 - Delete versions with optional issue migration
-- Check for existing versions and their associated issues
-- Support for multiple version name formats
+- Automatic cleanup of old versions with no issues
+- Automatic archiving of old released versions
+- Project-specific configurations for:
+  - Version formats
+  - Issue types
+  - Release days
+  - Archive settings
+- Support for multiple version name formats with variables
 - Dry-run mode for safe testing
 - Debug mode for troubleshooting
 - SSL verification control for self-signed certificates
@@ -31,14 +37,11 @@ pip install -e .
 
 The tool can be configured in three ways (in order of precedence):
 
-1. Environment variables:
+1. Environment variables (only for basic connectivity):
    ```bash
    JIRA_BASE_URL="https://your-jira-instance.com"
    JIRA_API_TOKEN="your-api-token"
-   JIRA_PROJECT_KEYS="PROJECT1,PROJECT2"
-   JIRA_VERSION_FORMATS='{"standard": "{PROJECT}.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}", "intake": "{PROJECT}.INTAKE.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}", "release": "{PROJECT}.{YEAR}.{MONTH:02d}.{DAY:02d}.RELEASE"}'
    JIRA_VERIFY_SSL="false"  # Optional: disable SSL verification
-   JIRA_PROJECT_FORMATS='{"default": ["standard"], "PROJECT1": ["standard", "release"], "PROJECT2": ["intake"]}'  # Optional: project-specific formats
    ```
 
 2. Configuration file (located in the user's data directory):
@@ -68,13 +71,27 @@ The tool can be configured in three ways (in order of precedence):
        "PROJECT2": ["Epic", "Task"]
      },
      "release_days": {
-       "default": [0, 1, 2, 3],
+       "default": [0, 1, 2, 3],  # Monday to Thursday
        "PROJECT1": {
-         "days": [0, 2, 4],
-         "frequency": 1
+         "days": [0, 2, 4],      # Monday, Wednesday, Friday
+         "frequency": 1          # Every week (use 2 for every two weeks)
        }
      },
-     "jira_verify_ssl": false
+     "archive_settings": {
+       "default": {
+         "months": 3,     # Archive after 3 months by default
+         "enabled": true  # Enable archiving by default
+       },
+       "PROJECT1": {
+         "months": 6,     # Archive after 6 months for PROJECT1
+         "enabled": true
+       },
+       "PROJECT2": {
+         "months": 1,     # Archive after 1 month for PROJECT2
+         "enabled": false # Disable archiving for PROJECT2
+       }
+     },
+     "jira_verify_ssl": true
    }
    ```
 
@@ -84,116 +101,26 @@ The tool can be configured in three ways (in order of precedence):
 
 - `jira_base_url`: Your Jira instance URL
 - `jira_api_token`: Your Jira API token
-- `project_keys`: List of Jira project keys to manage
-- `version_formats`: Dictionary of named version format patterns
-- `project_formats`: Map of project keys to lists of format names to use
-- `issue_types`: Configuration for issue types to show in detailed view
-  - `default`: Default issue types to show (defaults to ["Epic"])
-  - Per-project settings override the default
-- `release_days`: Configuration for version creation days
-  - `default`: Default days (0=Monday to 6=Sunday)
-  - Per-project settings with custom days and frequency
-- `verify_ssl`: Whether to verify SSL certificates (default: true)
-
-### Version Format Patterns
-
-Version formats are defined as named patterns in the `version_formats` configuration. Each pattern uses named variables:
-- `{PROJECT}` - Project key
-- `{WEEK}` - Week number (can use :02d for zero padding)
-- `{YEAR}` - Year
-- `{MONTH}` - Month (can use :02d for zero padding)
-- `{DAY}` - Day (can use :02d for zero padding)
-
-The variables can be used in any order and combined with static text. The "standard" format must always be defined as it serves as the default format when no other format is specified.
-
-Example format definitions:
-```json
-{
-  "version_formats": {
-    "standard": "{PROJECT}.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}",         // PROJECT1.W01.2024.01.15
-    "intake": "{PROJECT}.INTAKE.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}",    // PROJECT1.INTAKE.W01.2024.01.15
-    "release": "{PROJECT}.{YEAR}.{MONTH:02d}.{DAY:02d}.RELEASE",              // PROJECT1.2024.01.15.RELEASE
-    "custom": "V{YEAR}{MONTH:02d}{DAY:02d}-{PROJECT}-W{WEEK:02d}"            // V20240115-PROJECT1-W01
-  }
-}
-```
-
-### Project-Specific Formats
-
-You can specify which format patterns to use for each project using the `project_formats` configuration:
-
-```json
-{
-  "project_formats": {
-    "default": ["standard"],                // Default format for all projects
-    "PROJECT1": ["standard", "release"],    // Uses both standard and release formats
-    "PROJECT2": ["intake"]                  // Uses only intake format
-  }
-}
-```
-
-If a project isn't listed in `project_formats`, it will use the formats specified in `project_formats.default`. If no default is specified, it will use the "standard" format.
-
-### Issue Type Filtering
-
-You can configure which issue types to show in the detailed view:
-
-```json
-{
-  "issue_types": {
-    "default": ["Epic"],                    // Show only Epics by default
-    "PROJECT1": ["Epic", "Story"],          // Show Epics and Stories for PROJECT1
-    "PROJECT2": ["Epic", "Task"]            // Show Epics and Tasks for PROJECT2
-  }
-}
-```
-
-### Release Days Configuration
-
-Configure which days versions should be created for:
-
-```json
-{
-  "release_days": {
-    "default": [0, 1, 2, 3],               // Monday to Thursday by default
-    "PROJECT1": {
-      "days": [0, 2, 4],                   // Monday, Wednesday, Friday
-      "frequency": 1                        // Every week (use 2 for every two weeks)
-    }
-  }
-}
-```
+- `project_keys`: List of project keys to manage
+- `version_formats`: Format patterns for version names using variables:
+  - `{PROJECT}`: Project key
+  - `{WEEK}`: Week number
+  - `{YEAR}`: Year
+  - `{MONTH}`: Month
+  - `{DAY}`: Day
+- `project_formats`: Format assignments per project
+- `issue_types`: Issue types to include in version details
+- `release_days`: Days to create versions for (0=Monday to 6=Sunday)
+- `archive_settings`: Project-specific archive configuration
+- `jira_verify_ssl`: Whether to verify SSL certificates
 
 ## Usage
 
-### SSL Verification
-
-SSL verification can be controlled in three ways (in order of precedence):
-
-1. Command line argument:
-   ```bash
-   jira-version-manager --no-verify-ssl list PROJECT1
-   ```
-
-2. Environment variable:
-   ```bash
-   JIRA_VERIFY_SSL="false"
-   ```
-
-3. Configuration file:
-   ```json
-   {
-     "jira_verify_ssl": false
-   }
-   ```
-
-If not specified, SSL verification is enabled by default. When disabled through any method, SSL certificate verification warnings will be suppressed.
-
 ### Common Options
-All commands support the following options:
+All commands support:
 - `--debug`: Enable debug mode
 - `--dry-run`: Simulate actions without making changes
-- `--no-verify-ssl`: Disable SSL certificate verification (overrides config file and environment settings)
+- `--no-verify-ssl`: Disable SSL certificate verification
 
 ### Show Configuration
 ```bash
@@ -201,50 +128,70 @@ jira-version-manager info
 ```
 
 ### List Versions
-
-By default, only unreleased versions are shown:
 ```bash
+# List unreleased versions
 jira-version-manager list PROJECT1
-```
 
-Show only released versions:
-```bash
+# Show released versions
 jira-version-manager list PROJECT1 --show-released
-```
 
-Show all versions (both released and unreleased):
-```bash
+# Show all versions
 jira-version-manager list PROJECT1 --show-all
-```
 
-Show detailed information including issues (filtered by configured issue types):
-```bash
+# Show detailed information with issues
 jira-version-manager list PROJECT1 --detailed
 ```
 
-List with SSL verification disabled:
-```bash
-jira-version-manager list PROJECT1 --no-verify-ssl
-```
-
 ### Create Versions
-
-Create versions for next month using project's default formats:
 ```bash
+# Create for next month using default formats
 jira-version-manager create
-```
 
-Create versions for current month:
-```bash
+# Create for current month
 jira-version-manager create --current-month
-```
 
-Create versions using specific formats:
-```bash
+# Create with specific formats
 jira-version-manager create --formats standard,release
-```
 
-Create version for specific date and formats:
-```bash
+# Create for specific date
 jira-version-manager create --project-key PROJECT1 --date 2024-02-01 --formats intake,release
 ```
+
+### Cleanup Versions
+```bash
+# Clean single project
+jira-version-manager cleanup PROJECT1
+
+# Clean all projects
+jira-version-manager cleanup
+
+# Include released versions
+jira-version-manager cleanup PROJECT1 --include-released
+```
+
+Cleanup criteria:
+- More than 1 week old
+- No issues assigned
+- Unreleased (unless --include-released is used)
+
+### Archive Versions
+```bash
+# Archive using project settings
+jira-version-manager archive PROJECT1
+
+# Override archive age
+jira-version-manager archive PROJECT1 --months 2
+
+# Archive all projects
+jira-version-manager archive
+```
+
+Archive criteria:
+- Released versions only
+- Older than specified months (project setting or override)
+- Project must have archiving enabled
+
+When archived:
+1. Description prefixed with "[ARCHIVED]"
+2. Marked as archived in Jira
+3. Hidden from most Jira views

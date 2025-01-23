@@ -45,16 +45,27 @@ class JiraVersionManager:
                 "days": [0, 2, 4],    # Monday, Wednesday, Friday
                 "frequency": 1         # Every week (use 2 for every two weeks)
             }
+        },
+        "archive_settings": {
+            "default": {
+                "months": 3,  # Archive after 3 months by default
+                "enabled": True  # Enable archiving by default
+            },
+            "PROJECT1": {
+                "months": 6,  # Archive after 6 months for PROJECT1
+                "enabled": True
+            },
+            "PROJECT2": {
+                "months": 1,  # Archive after 1 month for PROJECT2
+                "enabled": False  # Disable archiving for PROJECT2
+            }
         }
     }
 
     ENV_MAPPING = {
         "JIRA_BASE_URL": "jira_base_url",
         "JIRA_API_TOKEN": "jira_api_token",
-        "JIRA_PROJECT_KEYS": "project_keys",
-        "JIRA_VERSION_FORMATS": "version_formats",
-        "JIRA_VERIFY_SSL": "jira_verify_ssl",
-        "JIRA_PROJECT_FORMATS": "project_formats"
+        "JIRA_VERIFY_SSL": "jira_verify_ssl"
     }
 
     def __init__(self, jira_verify_ssl: Optional[bool] = None) -> None:
@@ -73,7 +84,7 @@ class JiraVersionManager:
                 level=logging.INFO,
                 format='%(message)s',
                 handlers=[
-                    logging.FileHandler("jvm.log", mode='w'),  # 'w' mode overwrites the file
+                    logging.FileHandler("jira_version_manager.log", mode='w'),  # 'w' mode overwrites the file
                     logging.StreamHandler()
                 ]
             )
@@ -86,20 +97,44 @@ class JiraVersionManager:
             "Content-Type": "application/json"
         }
         
-        # Determine SSL verification:
+        # Determine SSL verification in order:
         # 1. Command line argument (jira_verify_ssl parameter)
-        # 2. Environment variable
-        # 3. Config file
+        # 2. Config file
+        # 3. Environment variable
         # 4. Default (True)
-        self.jira_verify_ssl = jira_verify_ssl if jira_verify_ssl is not None else self.config.get('jira_verify_ssl', True)
+        if jira_verify_ssl is not None:
+            self.jira_verify_ssl = jira_verify_ssl
+        elif 'jira_verify_ssl' in self.config:
+            self.jira_verify_ssl = self.config['jira_verify_ssl']
+        elif os.environ.get('JIRA_VERIFY_SSL'):
+            self.jira_verify_ssl = os.environ.get('JIRA_VERIFY_SSL').lower() not in ('false', '0', 'no')
+        else:
+            self.jira_verify_ssl = True
         
         # Disable SSL verification warnings if SSL verification is disabled
         if not self.jira_verify_ssl:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            self.session = requests.Session()
+            self.session.verify = False
+        else:
+            self.session = requests.Session()
+            self.session.verify = True
         
         # Validate base URL
         if not self.config["jira_base_url"].startswith(("http://", "https://")):
             raise ConfigurationError("Invalid Jira base URL. Must start with http:// or https://")
+
+    def create_sample_config(self):
+        """Create sample configuration file if it doesn't exist"""
+        config_dir = user_data_dir("jira-version-manager", "1500100xyz")
+        config_file = os.path.join(config_dir, "config.json")
+        
+        if not os.path.exists(config_dir):
+            os.makedirs(config_dir, mode=0o700)
+            
+        if not os.path.exists(config_file):
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.DEFAULT_CONFIG, f, indent=4)
 
     def load_config(self) -> None:
         """Load configuration in order: file, environment, defaults"""
@@ -129,23 +164,17 @@ class JiraVersionManager:
         except json.JSONDecodeError as e:
             raise ConfigurationError(f"Invalid JSON in config file: {e}")
         except Exception as e:
-            raise ConfigurationError(f"Error loading config file: {e}")
+            self.create_sample_config()
+            raise ConfigurationError(f"Config file not found. Created sample config file at {config_file}")
 
     def _load_config_from_env(self) -> None:
         """Load configuration from environment variables"""
         for env_var, config_key in self.ENV_MAPPING.items():
-            env_value = os.getenv(env_var)
+            env_value = os.environ.get(env_var)
             if not env_value:
                 continue
 
-            if env_var == "JIRA_PROJECT_FORMATS":
-                try:
-                    self.config[config_key] = json.loads(env_value)
-                except json.JSONDecodeError:
-                    raise ConfigurationError("Invalid JSON in JIRA_PROJECT_FORMATS environment variable")
-            elif env_var in ["JIRA_PROJECT_KEYS", "JIRA_VERSION_FORMATS"]:
-                self.config[config_key] = env_value.split(',')
-            elif env_var == "JIRA_jira_verify_ssl":
+            if env_var == "JIRA_VERIFY_SSL":
                 self.config[config_key] = env_value.lower() not in ('false', '0', 'no')
             else:
                 self.config[config_key] = env_value
@@ -471,14 +500,16 @@ class JiraVersionManager:
         if not version_id:
             raise ValueError("Version ID is required")
             
-        url = urljoin(self.config['jira_base_url'], f"rest/api/2/version/{version_id}")
+        url = urljoin(self.config['jira_base_url'], f"rest/api/2/version/{version_id}/removeAndSwap")
         
-        params = {}
+        payload = {}
         if move_issues_to:
-            params['moveFixIssuesTo'] = move_issues_to
+            payload = { 
+                "moveFixIssuesTo": move_issues_to
+            }
             
         try:
-            response = self._make_request('DELETE', url, headers=self.headers, params=params, timeout=30)
+            response = self._make_request('POST', url, headers=self.headers, json=payload, timeout=30)
             
             if response.status_code == 204:
                 print(f"Deleted version: {version_id}")
@@ -489,6 +520,81 @@ class JiraVersionManager:
             raise JiraApiError("Request timed out")
         except requests.exceptions.RequestException as e:
             raise JiraApiError(f"Error deleting version: {str(e)}")
+
+    def cleanup_versions(self, project_key: Optional[str] = None, include_released: bool = False) -> Dict[str, List[str]]:
+        """
+        Remove versions that are:
+        - More than 1 week in the past
+        - Have no issues assigned
+        - Are unreleased (or include released if include_released=True)
+        
+        Args:
+            project_key: The Jira project key (if None, cleanup all configured projects)
+            include_released: Whether to also remove released versions (default: False)
+            
+        Returns:
+            Dictionary mapping project keys to lists of removed version names
+        """
+        removed_versions = {}
+        current_date = datetime.now()
+        
+        # Get list of projects to process
+        projects = [project_key] if project_key else self.config['project_keys']
+        
+        for proj_key in projects:
+            removed_versions[proj_key] = []
+            versions = self.list_versions(proj_key)
+            
+            for version in versions:
+                # Skip if version is released and we're not including released versions
+                if version.get('released', False) and not include_released:
+                    continue
+                    
+                # Check if version has a date in its name using our format patterns
+                try:
+                    # Extract date from version name using available formats
+                    version_date = None
+                    for format_name, format_pattern in self.config['version_formats'].items():
+                        try:
+                            # Try to parse the date from the version name
+                            if '.W' in format_pattern:  # Weekly format
+                                parts = version['name'].split('.')
+                                year = int(parts[-3])
+                                month = int(parts[-2])
+                                day = int(parts[-1])
+                                version_date = datetime(year, month, day)
+                                break
+                            else:  # Standard format
+                                parts = version['name'].split('.')
+                                year = int([p for p in parts if len(p) == 4][0])
+                                month = int([p for p in parts if len(p) == 2][0])
+                                day = int([p for p in parts if len(p) == 2][1])
+                                version_date = datetime(year, month, day)
+                                break
+                        except (ValueError, IndexError):
+                            continue
+                    
+                    if version_date is None:
+                        continue  # Skip if we couldn't parse the date
+                    
+                    # Check if version is more than 1 week old
+                    if (current_date - version_date).days <= 7:
+                        continue
+                    
+                    # Check if version has any issues
+                    issues = self.get_issues_for_version(proj_key, version['name'])
+                    if issues:
+                        continue
+                    
+                    # If we got here, the version meets all criteria for removal
+                    self.delete_version(version['id'])
+                    removed_versions[proj_key].append(version['name'])
+                    
+                except Exception as e:
+                    logging.warning(f"Error processing version {version['name']} for project {proj_key}: {str(e)}")
+                    continue
+        
+        return removed_versions
 
     def get_version_by_name(self, project_key: str, version_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -537,6 +643,94 @@ class JiraVersionManager:
                 else:
                     self.logger.info(f"No issues of types [{', '.join(issue_types)}] assigned")
 
+    def archive_releases(self, project_key: Optional[str] = None, months: Optional[int] = None) -> Dict[str, List[str]]:
+        """
+        Archive released versions that are older than the specified number of months.
+        
+        Args:
+            project_key: The Jira project key (if None, archive for all configured projects)
+            months: Number of months after which to archive releases (if None, use project settings)
+            
+        Returns:
+            Dictionary mapping project keys to lists of archived version names
+        """
+        archived_versions = {}
+        current_date = datetime.now()
+        
+        # Get list of projects to process
+        projects = [project_key] if project_key else self.config['project_keys']
+        
+        for proj_key in projects:
+            # Get project-specific archive settings
+            archive_config = self.config.get('archive_settings', {}).get(proj_key, 
+                self.config['archive_settings']['default'])
+            
+            # Skip if archiving is disabled for this project
+            if not archive_config.get('enabled', True):
+                archived_versions[proj_key] = []
+                continue
+            
+            # Use provided months or project-specific setting
+            archive_months = months if months is not None else archive_config.get('months', 3)
+            cutoff_date = current_date - timedelta(days=archive_months * 30)  # Approximate months
+            
+            archived_versions[proj_key] = []
+            versions = self.list_versions(proj_key)
+            
+            for version in versions:
+                # Only process released versions
+                if not version.get('released', False):
+                    continue
+                    
+                # Check if version has a date in its name using our format patterns
+                try:
+                    # Extract date from version name using available formats
+                    version_date = None
+                    for format_name, format_pattern in self.config['version_formats'].items():
+                        try:
+                            # Try to parse the date from the version name
+                            if '.W' in format_pattern:  # Weekly format
+                                parts = version['name'].split('.')
+                                year = int(parts[-3])
+                                month = int(parts[-2])
+                                day = int(parts[-1])
+                                version_date = datetime(year, month, day)
+                                break
+                            else:  # Standard format
+                                parts = version['name'].split('.')
+                                year = int([p for p in parts if len(p) == 4][0])
+                                month = int([p for p in parts if len(p) == 2][0])
+                                day = int([p for p in parts if len(p) == 2][1])
+                                version_date = datetime(year, month, day)
+                                break
+                        except (ValueError, IndexError):
+                            continue
+                    
+                    if version_date is None:
+                        continue  # Skip if we couldn't parse the date
+                    
+                    # Check if version is older than cutoff date
+                    if version_date > cutoff_date:
+                        continue
+                    
+                    # Archive the version by updating its description
+                    url = f"{self.config['jira_base_url']}/rest/api/2/version/{version['id']}"
+                    description = version.get('description', '') or ''
+                    if not description.startswith('[ARCHIVED]'):
+                        new_description = f"[ARCHIVED] {description}"
+                        data = {
+                            'description': new_description,
+                            'archived': True
+                        }
+                        self._make_request('PUT', url, json=data)
+                        archived_versions[proj_key].append(version['name'])
+                    
+                except Exception as e:
+                    logging.warning(f"Error processing version {version['name']} for project {proj_key}: {str(e)}")
+                    continue
+        
+        return archived_versions
+
 def create_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser"""
     parser = argparse.ArgumentParser(
@@ -575,6 +769,17 @@ def create_parser() -> argparse.ArgumentParser:
     delete_parser.add_argument("version_name", help="Name of the version to delete")
     delete_parser.add_argument("--move-to", help="Name of version to move issues to")
     
+    # Cleanup command
+    cleanup_parser = subparsers.add_parser('cleanup', help='Cleanup versions')
+    cleanup_parser.add_argument("--project-key", help="Jira project key")
+    cleanup_parser.add_argument("--include-released", action="store_true", help="Also remove released versions")
+
+    # Archive command
+    archive_parser = subparsers.add_parser('archive', help='Archive old released versions')
+    archive_parser.add_argument('project_key', nargs='?', help='Jira project key (optional)')
+    archive_parser.add_argument('--months', type=int, default=3,
+                              help='Archive versions older than this many months (default: 3)')
+
     return parser
 
 def handle_info_command(manager: JiraVersionManager) -> None:
@@ -621,6 +826,32 @@ def handle_delete_command(manager: JiraVersionManager, args: argparse.Namespace)
     else:
         print(f"DRY RUN: Would delete version: {args.version_name}")
 
+def handle_cleanup_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
+    """Handle the cleanup command"""
+    removed_versions = manager.cleanup_versions(args.project_key, args.include_released)
+    if any(versions for versions in removed_versions.values()):
+        print("Removed versions:")
+        for project, versions in removed_versions.items():
+            if versions:
+                print(f"\n{project}:")
+                for version in versions:
+                    print(f"  - {version}")
+    else:
+        print("No versions were removed.")
+
+def handle_archive_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
+    """Handle the archive command"""
+    archived_versions = manager.archive_releases(args.project_key, args.months)
+    if any(versions for versions in archived_versions.values()):
+        print("Archived versions:")
+        for project, versions in archived_versions.items():
+            if versions:
+                print(f"\n{project}:")
+                for version in versions:
+                    print(f"  - {version}")
+    else:
+        print("No versions were archived.")
+
 def main() -> None:
     """Main entry point for the CLI application"""
     parser = create_parser()
@@ -635,7 +866,9 @@ def main() -> None:
             'info': lambda: handle_info_command(manager),
             'list': lambda: handle_list_command(manager, args),
             'create': lambda: handle_create_command(manager, args),
-            'delete': lambda: handle_delete_command(manager, args)
+            'delete': lambda: handle_delete_command(manager, args),
+            'cleanup': lambda: handle_cleanup_command(manager, args),
+            'archive': lambda: handle_archive_command(manager, args)
         }
         
         handler = command_handlers.get(args.command)
