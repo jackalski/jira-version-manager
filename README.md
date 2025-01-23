@@ -129,43 +129,52 @@ jira-version-manager info
 
 ### List Versions
 ```bash
-# List unreleased versions
+# List versions for a specific project
 jira-version-manager list PROJECT1
 
-# Show released versions
-jira-version-manager list PROJECT1 --show-released
+# List versions for all configured projects
+jira-version-manager list
 
-# Show all versions
-jira-version-manager list PROJECT1 --show-all
+# Show released versions (for all projects)
+jira-version-manager list --show-released
 
-# Show detailed information with issues
-jira-version-manager list PROJECT1 --detailed
+# Show all versions (for all projects)
+jira-version-manager list --show-all
+
+# Show detailed information with issues (for all projects)
+jira-version-manager list --detailed
 ```
 
 ### Create Versions
 ```bash
-# Create for next month using default formats
+# Create versions for all configured projects (next month)
 jira-version-manager create
 
-# Create for current month
+# Create versions for a specific project (next month)
+jira-version-manager create --project-key PROJECT1
+
+# Create for current month (all projects)
 jira-version-manager create --current-month
 
-# Create with specific formats
+# Create with specific formats (all projects)
 jira-version-manager create --formats standard,release
 
-# Create for specific date
+# Create for specific project and date
 jira-version-manager create --project-key PROJECT1 --date 2024-02-01 --formats intake,release
 ```
 
 ### Cleanup Versions
 ```bash
-# Clean single project
-jira-version-manager cleanup PROJECT1
-
-# Clean all projects
+# Clean up versions for all configured projects
 jira-version-manager cleanup
 
-# Include released versions
+# Clean up versions for a specific project
+jira-version-manager cleanup PROJECT1
+
+# Include released versions (all projects)
+jira-version-manager cleanup --include-released
+
+# Include released versions for specific project
 jira-version-manager cleanup PROJECT1 --include-released
 ```
 
@@ -176,14 +185,17 @@ Cleanup criteria:
 
 ### Archive Versions
 ```bash
-# Archive using project settings
+# Archive versions for all configured projects
+jira-version-manager archive
+
+# Archive versions for a specific project
 jira-version-manager archive PROJECT1
 
-# Override archive age
-jira-version-manager archive PROJECT1 --months 2
+# Override archive age (all projects)
+jira-version-manager archive --months 2
 
-# Archive all projects
-jira-version-manager archive
+# Override archive age for specific project
+jira-version-manager archive PROJECT1 --months 2
 ```
 
 Archive criteria:
@@ -195,3 +207,5 @@ When archived:
 1. Description prefixed with "[ARCHIVED]"
 2. Marked as archived in Jira
 3. Hidden from most Jira views
+
+Note: When no project key is provided, commands will operate on all projects defined in the `project_keys` configuration. This allows for easy batch operations across multiple projects.

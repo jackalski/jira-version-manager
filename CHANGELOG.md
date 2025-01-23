@@ -5,7 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2025-01-23
+## [0.2.1] - 2024-01-24
+
+### Changed
+- Improved handling of project-wide operations
+  - All commands now support operating on all configured projects when no project key is provided
+  - Enhanced output formatting for multi-project operations
+  - Better error handling for batch operations
+- Updated command-line interface
+  - Made project key parameter optional for all commands
+  - Improved help text and command descriptions
+  - Consistent parameter naming across commands
+
+## [0.2.0] - 2024-01-23
 
 ### Added
 - Automatic version cleanup functionality
@@ -47,5 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSL verification control for self-signed certificates
 - Basic logging functionality
 
+[0.2.1]: https://github.com/jackalski/jira-version-manager/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jackalski/jira-version-manager/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jackalski/jira-version-manager/releases/tag/v0.1.0 

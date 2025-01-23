@@ -90,6 +90,7 @@ class JiraVersionManager:
             )
         
         if not self.config["jira_api_token"]:
+            os.startfile(self.config["config_location"])
             raise ConfigurationError("API token not configured. Set JIRA_API_TOKEN environment variable.")
         
         self.headers = {
@@ -150,22 +151,29 @@ class JiraVersionManager:
             os.makedirs(config_dir)
             
         if not os.path.exists(config_file):
+            print("Configuration file not found. Creating sample configuration file...")
+            self.create_sample_config()
+            print(f"Created sample configuration file at {config_file}")
+            os.startfile(config_file)
+            self.config["config_location"] = config_file
             return
 
         try:
             with open(config_file, 'r') as f:
                 loaded_config = json.load(f)
                 # Validate required fields
-                required_fields = ["jira_base_url", "project_keys", "version_formats"]
+                required_fields = ["jira_base_url", "project_keys"]
                 missing_fields = [field for field in required_fields if field not in loaded_config]
                 if missing_fields:
+                    os.startfile(config_file)
                     raise ConfigurationError(f"Missing required fields in config: {', '.join(missing_fields)}")
                 self.config.update(loaded_config)
+                self.config["config_location"] = config_file
         except json.JSONDecodeError as e:
+            os.startfile(config_file)
             raise ConfigurationError(f"Invalid JSON in config file: {e}")
         except Exception as e:
-            self.create_sample_config()
-            raise ConfigurationError(f"Config file not found. Created sample config file at {config_file}")
+            raise Exception(f"Error loading config file: {e}")
 
     def _load_config_from_env(self) -> None:
         """Load configuration from environment variables"""
@@ -732,54 +740,41 @@ class JiraVersionManager:
         return archived_versions
 
 def create_parser() -> argparse.ArgumentParser:
-    """Create and configure the argument parser"""
-    parser = argparse.ArgumentParser(
-        description="Jira Version Manager - Create and manage Jira versions",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    """Create the argument parser"""
+    parser = argparse.ArgumentParser(description="Manage Jira versions")
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument('--dry-run', action='store_true', help='Simulate actions without making changes')
+    parser.add_argument('--no-verify-ssl', action='store_true', help='Disable SSL certificate verification')
     
-    # Add global arguments
-    parser.add_argument("--no-verify-ssl", action="store_true", help="Disable SSL certificate verification")
-    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-    parser.add_argument("--dry-run", action="store_true", help="Simulate actions without making changes")
-    
-    # Create subparsers for different commands
-    subparsers = parser.add_subparsers(dest='command', help='Commands')
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
     
     # Info command
-    subparsers.add_parser('info', help='Display current configuration')
+    subparsers.add_parser('info', help='Show configuration information')
     
     # List command
-    list_parser = subparsers.add_parser('list', help='List versions for a project')
-    list_parser.add_argument("project_key", help="Jira project key")
-    list_parser.add_argument("--show-all", action="store_true", help="Show both released and unreleased versions")
-    list_parser.add_argument("--show-released", action="store_true", help="Show only released versions")
-    list_parser.add_argument("--detailed", action="store_true", help="Show detailed information including issues")
+    list_parser = subparsers.add_parser('list', help='List versions')
+    list_parser.add_argument('project_key', nargs='?', help='Jira project key')
+    list_parser.add_argument('--show-released', action='store_true', help='Show only released versions')
+    list_parser.add_argument('--show-all', action='store_true', help='Show all versions')
+    list_parser.add_argument('--detailed', action='store_true', help='Show detailed information including issues')
     
     # Create command
-    create_parser = subparsers.add_parser('create', help='Create new version(s)')
-    create_parser.add_argument("--project-key", help="Jira project key")
-    create_parser.add_argument("--date", help="Specific date for version (YYYY-MM-DD)")
-    create_parser.add_argument("--current-month", action="store_true", help="Create versions for current month instead of next month")
-    create_parser.add_argument("--formats", help="Comma-separated list of format keys to use (e.g. 'standard,intake')")
-    
-    # Delete command
-    delete_parser = subparsers.add_parser('delete', help='Delete a version')
-    delete_parser.add_argument("project_key", help="Jira project key")
-    delete_parser.add_argument("version_name", help="Name of the version to delete")
-    delete_parser.add_argument("--move-to", help="Name of version to move issues to")
+    create_parser = subparsers.add_parser('create', help='Create versions')
+    create_parser.add_argument('--project-key', help='Jira project key')
+    create_parser.add_argument('--date', help='Specific date (YYYY-MM-DD)')
+    create_parser.add_argument('--current-month', action='store_true', help='Create versions for current month')
+    create_parser.add_argument('--formats', help='Comma-separated list of format names to use')
     
     # Cleanup command
-    cleanup_parser = subparsers.add_parser('cleanup', help='Cleanup versions')
-    cleanup_parser.add_argument("--project-key", help="Jira project key")
-    cleanup_parser.add_argument("--include-released", action="store_true", help="Also remove released versions")
-
+    cleanup_parser = subparsers.add_parser('cleanup', help='Remove old versions with no issues')
+    cleanup_parser.add_argument('project_key', nargs='?', help='Jira project key')
+    cleanup_parser.add_argument('--include-released', action='store_true', help='Include released versions in cleanup')
+    
     # Archive command
     archive_parser = subparsers.add_parser('archive', help='Archive old released versions')
-    archive_parser.add_argument('project_key', nargs='?', help='Jira project key (optional)')
-    archive_parser.add_argument('--months', type=int, default=3,
-                              help='Archive versions older than this many months (default: 3)')
-
+    archive_parser.add_argument('project_key', nargs='?', help='Jira project key')
+    archive_parser.add_argument('--months', type=int, help='Archive versions older than this many months')
+    
     return parser
 
 def handle_info_command(manager: JiraVersionManager) -> None:
@@ -793,21 +788,47 @@ def handle_info_command(manager: JiraVersionManager) -> None:
 
 def handle_list_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
     """Handle the list command"""
-    manager.list_versions_with_details(args.project_key, args.show_all, args.show_released, args.detailed)
+    projects = [args.project_key] if args.project_key else manager.config['project_keys']
+    
+    for project_key in projects:
+        versions = manager.list_versions(project_key)
+        
+        # Filter versions based on release status
+        if not args.show_all:
+            versions = [v for v in versions if args.show_released == v.get('released', False)]
+        
+        if versions:
+            print(f"\n{project_key}:")
+            for version in versions:
+                print(f"  - {version['name']} ({'Released' if version.get('released', False) else 'Unreleased'})")
+                
+                if args.detailed:
+                    issues = manager.get_issues_for_version(project_key, version['name'])
+                    if issues:
+                        print("    Issues:")
+                        for issue in issues:
+                            print(f"      - {issue['key']}: {issue['fields']['summary']} ({issue['fields']['status']['name']})")
+                    else:
+                        print("    No issues assigned")
+        else:
+            print(f"\n{project_key}: No versions found")
 
 def handle_create_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
     """Handle the create command"""
-    format_keys = args.formats.split(',') if args.formats else None
+    projects = [args.project_key] if args.project_key else manager.config['project_keys']
     
-    if args.project_key and args.date:
-        manager.create_custom_version(args.project_key, args.date, args.debug, args.dry_run, format_keys)
-    else:
-        # Create versions for current or next month
-        weekdays = manager.get_weekdays_for_month(use_next_month=not args.current_month)
-        project_keys = [args.project_key] if args.project_key else manager.config['project_keys']
-        
-        for project_key in project_keys:
-            manager.create_versions_for_dates(project_key, weekdays, args.debug, args.dry_run, format_keys)
+    for project_key in projects:
+        try:
+            if args.date:
+                # Create versions for specific date
+                manager.create_versions_for_dates(project_key, [datetime.strptime(args.date, "%Y-%m-%d")], args.debug, args.dry_run, args.formats.split(',') if args.formats else None)
+            else:
+                # Create versions for next month or current month
+                weekdays = manager.get_weekdays_for_month(project_key, use_next_month=not args.current_month)
+                manager.create_versions_for_dates(project_key, weekdays, args.debug, args.dry_run, args.formats.split(',') if args.formats else None)
+            print(f"Created versions for {project_key}")
+        except Exception as e:
+            print(f"Error creating versions for {project_key}: {str(e)}")
 
 def handle_delete_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
     """Handle the delete command"""
@@ -828,10 +849,11 @@ def handle_delete_command(manager: JiraVersionManager, args: argparse.Namespace)
 
 def handle_cleanup_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
     """Handle the cleanup command"""
-    removed_versions = manager.cleanup_versions(args.project_key, args.include_released)
-    if any(versions for versions in removed_versions.values()):
+    removed = manager.cleanup_versions(args.project_key, args.include_released)
+    
+    if any(versions for versions in removed.values()):
         print("Removed versions:")
-        for project, versions in removed_versions.items():
+        for project, versions in removed.items():
             if versions:
                 print(f"\n{project}:")
                 for version in versions:
@@ -841,10 +863,11 @@ def handle_cleanup_command(manager: JiraVersionManager, args: argparse.Namespace
 
 def handle_archive_command(manager: JiraVersionManager, args: argparse.Namespace) -> None:
     """Handle the archive command"""
-    archived_versions = manager.archive_releases(args.project_key, args.months)
-    if any(versions for versions in archived_versions.values()):
+    archived = manager.archive_releases(args.project_key, args.months)
+    
+    if any(versions for versions in archived.values()):
         print("Archived versions:")
-        for project, versions in archived_versions.items():
+        for project, versions in archived.items():
             if versions:
                 print(f"\n{project}:")
                 for version in versions:
