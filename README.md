@@ -19,6 +19,83 @@ A Python tool to manage Jira versions, supporting automatic version creation, li
 - Debug mode for troubleshooting
 - SSL verification control for self-signed certificates
 
+## Semantic Versioning
+
+The tool supports semantic versioning with pre-release versions, build numbers, and metadata. You can create semantic versions in several ways:
+
+### Creating New Versions
+
+```bash
+# Create next major version (e.g., 2.0.0)
+jira-version-manager create PROJECT1 --new-major
+
+# Create next minor version (e.g., 1.2.0)
+jira-version-manager create PROJECT1 --new-minor
+
+# Create next patch version (e.g., 1.1.2)
+jira-version-manager create PROJECT1 --new-patch
+
+# Create specific version
+jira-version-manager create PROJECT1 --major 2 --minor 1 --patch 3
+```
+
+### Pre-release Versions
+
+```bash
+# Create alpha version
+jira-version-manager create PROJECT1 --new-pre-release alpha
+# Creates: 1.2.3-alpha.1
+
+# Create next alpha version
+jira-version-manager create PROJECT1 --new-pre-release alpha
+# Creates: 1.2.3-alpha.2
+
+# Create beta version
+jira-version-manager create PROJECT1 --new-pre-release beta
+# Creates: 1.2.3-beta.1
+
+# Create release candidate
+jira-version-manager create PROJECT1 --new-pre-release rc
+# Creates: 1.2.3-rc.1
+
+# Create specific pre-release version
+jira-version-manager create PROJECT1 --major 2 --minor 0 --pre-release "beta.3"
+# Creates: 2.0.0-beta.3
+```
+
+### Build Numbers and Metadata
+
+```bash
+# Add build number
+jira-version-manager create PROJECT1 --new-patch --build 42
+# Creates: 1.2.4+b42
+
+# Add metadata
+jira-version-manager create PROJECT1 --new-patch --metadata "+sha.5114f85"
+# Creates: 1.2.4+sha.5114f85
+
+# Combine pre-release, build, and metadata
+jira-version-manager create PROJECT1 --major 2 --minor 0 --pre-release "beta.1" --build 42 --metadata "+exp.sha.5114f85"
+# Creates: 2.0.0-beta.1+b42+exp.sha.5114f85
+```
+
+### Project-Specific Semantic Versions
+
+You can also include the project key in semantic versions using the `semantic_project` format:
+
+```json
+{
+  "version_formats": {
+    "semantic_project": "{PROJECT}.{MAJOR}.{MINOR}.{PATCH}{PRE_RELEASE}{BUILD}{METADATA}"
+  },
+  "project_formats": {
+    "PROJECT1": ["semantic_project"]
+  }
+}
+```
+
+This will create versions like `PROJECT1.1.2.3-beta.1+b42`.
+
 ## Installation
 
 ### From PyPI
@@ -58,11 +135,12 @@ The tool can be configured in three ways (in order of precedence):
      "version_formats": {
        "standard": "{PROJECT}.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}",
        "intake": "{PROJECT}.INTAKE.W{WEEK:02d}.{YEAR}.{MONTH:02d}.{DAY:02d}",
-       "release": "{PROJECT}.{YEAR}.{MONTH:02d}.{DAY:02d}.RELEASE"
+       "release": "{PROJECT}.{YEAR}.{MONTH:02d}.{DAY:02d}.RELEASE",
+       "semantic_project": "{PROJECT}.{MAJOR}.{MINOR}.{PATCH}{PRE_RELEASE}{BUILD}{METADATA}"
      },
      "project_formats": {
        "default": ["standard"],
-       "PROJECT1": ["standard", "release"],
+       "PROJECT1": ["standard", "release", "semantic_project"],
        "PROJECT2": ["intake"]
      },
      "issue_types": {

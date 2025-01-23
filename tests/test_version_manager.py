@@ -520,3 +520,135 @@ def test_archive_releases_invalid_format(mock_get, manager):
     # Test archive with invalid format
     archived = manager.archive_releases("TEST1")
     assert len(archived["TEST1"]) == 0  # Should skip invalid format versions
+
+def test_parse_semantic_version():
+    """Test parsing semantic version names"""
+    manager = JiraVersionManager()
+    
+    # Test full version with pre-release and build
+    parsed = manager.parse_semantic_version("1.2.3-alpha.1+b42")
+    assert parsed['MAJOR'] == 1
+    assert parsed['MINOR'] == 2
+    assert parsed['PATCH'] == 3
+    assert parsed['PRE_RELEASE'] == '-alpha.1'
+    assert parsed['BUILD'] == '+b42'
+    
+    # Test version with pre-release only
+    parsed = manager.parse_semantic_version("2.0.0-beta.2")
+    assert parsed['MAJOR'] == 2
+    assert parsed['MINOR'] == 0
+    assert parsed['PATCH'] == 0
+    assert parsed['PRE_RELEASE'] == '-beta.2'
+    assert parsed['BUILD'] is None
+    
+    # Test version with build only
+    parsed = manager.parse_semantic_version("1.2.3+b42")
+    assert parsed['MAJOR'] == 1
+    assert parsed['MINOR'] == 2
+    assert parsed['PATCH'] == 3
+    assert parsed['PRE_RELEASE'] is None
+    assert parsed['BUILD'] == '+b42'
+    
+    # Test version with metadata
+    parsed = manager.parse_semantic_version("1.2.3+sha.5114f85")
+    assert parsed['MAJOR'] == 1
+    assert parsed['MINOR'] == 2
+    assert parsed['PATCH'] == 3
+    assert parsed['METADATA'] == '+sha.5114f85'
+
+def test_create_semantic_version():
+    """Test creating semantic version names"""
+    manager = JiraVersionManager()
+    
+    # Test full version with pre-release and build
+    version = manager.create_semantic_version(
+        "PROJECT1", "semantic",
+        major=1, minor=2, patch=3,
+        pre_release="alpha.1",
+        build=42
+    )
+    assert version == "1.2.3-alpha.1+b42"
+    
+    # Test version with pre-release only
+    version = manager.create_semantic_version(
+        "PROJECT1", "semantic",
+        major=2, minor=0, patch=0,
+        pre_release="beta.2"
+    )
+    assert version == "2.0.0-beta.2"
+    
+    # Test version with build only
+    version = manager.create_semantic_version(
+        "PROJECT1", "semantic",
+        major=1, minor=2, patch=3,
+        build=42
+    )
+    assert version == "1.2.3+b42"
+    
+    # Test version with metadata
+    version = manager.create_semantic_version(
+        "PROJECT1", "semantic",
+        major=1, minor=2, patch=3,
+        metadata="+sha.5114f85"
+    )
+    assert version == "1.2.3+sha.5114f85"
+    
+    # Test project-specific semantic version
+    version = manager.create_semantic_version(
+        "PROJECT1", "semantic_project",
+        major=1, minor=2, patch=3,
+        pre_release="beta.1",
+        build=42
+    )
+    assert version == "PROJECT1.1.2.3-beta.1+b42"
+
+@patch('requests.request')
+def test_get_latest_semantic_version(mock_request):
+    """Test getting latest semantic version numbers"""
+    manager = JiraVersionManager()
+    
+    # Mock version list response
+    mock_request.return_value.json.return_value = [
+        {'name': '1.0.0'},
+        {'name': '1.1.0-alpha.1'},
+        {'name': '1.1.0-alpha.2'},
+        {'name': '1.1.0-beta.1+b42'},
+        {'name': '1.1.0-rc.1'},
+        {'name': '1.1.0'},
+        {'name': '1.1.1+b43'}
+    ]
+    
+    major, minor, patch, pre_release, build = manager.get_latest_semantic_version("PROJECT1", "semantic")
+    assert major == 1
+    assert minor == 1
+    assert patch == 1
+    assert pre_release is None
+    assert build == 43
+
+@patch('requests.request')
+def test_create_next_pre_release(mock_request):
+    """Test creating next pre-release version"""
+    manager = JiraVersionManager()
+    
+    # Mock version list response
+    mock_request.return_value.json.return_value = [
+        {'name': '1.0.0-alpha.1'},
+        {'name': '1.0.0-alpha.2'},
+        {'name': '1.0.0-beta.1'}
+    ]
+    
+    # Test creating next alpha version
+    version = manager.create_version_name(
+        "semantic", "PROJECT1",
+        major=1, minor=0, patch=0,
+        pre_release="alpha.3"
+    )
+    assert version == "1.0.0-alpha.3"
+    
+    # Test creating first beta version
+    version = manager.create_version_name(
+        "semantic", "PROJECT1",
+        major=1, minor=0, patch=0,
+        pre_release="beta.1"
+    )
+    assert version == "1.0.0-beta.1"

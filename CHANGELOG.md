@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2024-03-25
+
+### Added
+- Enhanced semantic versioning support:
+  - Added pre-release version support (e.g., `-alpha.1`, `-beta.2`, `-rc.1`)
+  - Added build number support (e.g., `+b42`)
+  - Added metadata support (e.g., `+exp.sha.5114f85`)
+  - New command line options:
+    - `--new-major`, `--new-minor`, `--new-patch` for version increments
+    - `--pre-release` for specifying pre-release version
+    - `--new-pre-release` for auto-incrementing pre-release versions
+    - `--build` for build numbers
+    - `--metadata` for additional metadata
+- New semantic version format with project key: `{PROJECT}.{MAJOR}.{MINOR}.{PATCH}`
+
+### Changed
+- Renamed SSL verification setting from `verify_ssl` to `jira_verify_ssl`
+- Updated publisher information and repository links
+- Improved configuration structure with project-specific settings
+- Enhanced error handling and logging
+
+### Fixed
+- Resource leaks in file handling with proper encoding and permissions
+- Improved error handling for API requests
+- Fixed version date parsing for different format patterns
+
 ## [0.2.2] - 2025-01-23
 
 ### Fixed
@@ -52,17 +78,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Release days configuration per project
   - Archive settings per project
 
-### Changed
-- Renamed SSL verification setting from `verify_ssl` to `jira_verify_ssl`
-- Updated publisher information and repository links
-- Improved configuration structure with project-specific settings
-- Enhanced error handling and logging
-
-### Fixed
-- Resource leaks in file handling with proper encoding and permissions
-- Improved error handling for API requests
-- Fixed version date parsing for different format patterns
-
 ## [0.1.0] - 2024-03-21
 
 ### Added
@@ -73,4 +88,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [0.2.1]: https://github.com/jackalski/jira-version-manager/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jackalski/jira-version-manager/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/jackalski/jira-version-manager/releases/tag/v0.1.0 
+[0.1.0]: https://github.com/jackalski/jira-version-manager/releases/tag/v0.1.0
+[0.3.0]: https://github.com/jackalski/jira-version-manager/compare/v0.2.1...v0.3.0 
