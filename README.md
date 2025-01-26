@@ -41,8 +41,6 @@ When started without parameters, the tool launches an interactive menu system:
 jira-version-manager
 ```
 
-![Interactive Menu Example](https://via.placeholder.com/600x400?text=Interactive+Mode+Screenshot)
-
 ### Navigation Guide:
 ```
 Jira Version Manager Interactive Mode
