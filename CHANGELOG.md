@@ -5,7 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2024-03-25
+## [0.5.0] - 2025-01-26
+
+### Added
+- Network connection handling with retry mechanism (3 attempts)
+- Pre-flight connectivity checks for Jira API requests
+- Enhanced error messages with troubleshooting guidance
+- Comprehensive test coverage for network failures
+- Build system support using Nuitka for smaller executables
+
+### Changed
+- Improved error handling in _make_request method
+- Updated build scripts for Windows, Linux, and macOS
+- Enhanced SSL verification error messages
+- Restructured test suite for better organization
+
+### Fixed
+- Connection error handling with proper retries
+- Build script encoding issues on Windows
+- System module import in main function
+- Error message formatting for network failures
+
+## [0.3.0] - 2025-01-25
 
 ### Added
 - Enhanced semantic versioning support:

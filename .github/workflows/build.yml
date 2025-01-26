@@ -1,0 +1,33 @@
+name: Build
+
+on: [push]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: pip install nuitka requests urllib3 appdirs
+      
+    - name: Build executable
+      run: |
+        nuitka --standalone --onefile \
+          --enable-plugin=anti-bloat,data-files,pkg-resources,appdirs \
+          --output-filename=jira-version-manager-${{ runner.os }} \
+          jira_version_manager/version_manager.py
+          
+    - uses: actions/upload-artifact@v3
+      with:
+        name: jira-version-manager-${{ runner.os }}
+        path: dist/* 

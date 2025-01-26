@@ -1,7 +1,8 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 from jira_version_manager.version_manager import JiraVersionManager, JiraApiError, ConfigurationError
+import requests
 
 @pytest.fixture
 def manager():
@@ -561,7 +562,7 @@ def test_create_semantic_version():
     manager = JiraVersionManager()
     
     # Test full version with pre-release and build
-    version = manager.create_semantic_version(
+    version = manager.create_semantic_version_name(
         "PROJECT1", "semantic",
         major=1, minor=2, patch=3,
         pre_release="alpha.1",
@@ -570,7 +571,7 @@ def test_create_semantic_version():
     assert version == "1.2.3-alpha.1+b42"
     
     # Test version with pre-release only
-    version = manager.create_semantic_version(
+    version = manager.create_semantic_version_name(
         "PROJECT1", "semantic",
         major=2, minor=0, patch=0,
         pre_release="beta.2"
@@ -578,7 +579,7 @@ def test_create_semantic_version():
     assert version == "2.0.0-beta.2"
     
     # Test version with build only
-    version = manager.create_semantic_version(
+    version = manager.create_semantic_version_name(
         "PROJECT1", "semantic",
         major=1, minor=2, patch=3,
         build=42
@@ -586,7 +587,7 @@ def test_create_semantic_version():
     assert version == "1.2.3+b42"
     
     # Test version with metadata
-    version = manager.create_semantic_version(
+    version = manager.create_semantic_version_name(
         "PROJECT1", "semantic",
         major=1, minor=2, patch=3,
         metadata="+sha.5114f85"
@@ -594,7 +595,7 @@ def test_create_semantic_version():
     assert version == "1.2.3+sha.5114f85"
     
     # Test project-specific semantic version
-    version = manager.create_semantic_version(
+    version = manager.create_semantic_version_name(
         "PROJECT1", "semantic_project",
         major=1, minor=2, patch=3,
         pre_release="beta.1",
@@ -652,3 +653,142 @@ def test_create_next_pre_release(mock_request):
         pre_release="beta.1"
     )
     assert version == "1.0.0-beta.1"
+
+def test_create_release_calendar():
+    """Test creating release calendar with various parameters"""
+    manager = JiraVersionManager()
+    
+    # Test weekly frequency
+    dates = manager.create_release_calendar(
+        "TEST1",
+        frequency="weekly",
+        weekdays="0,2,4",  # Monday, Wednesday, Friday
+        next_month=True,
+        current_month=False
+    )
+    assert all(d.weekday() in [0, 2, 4] for d in dates)  # All dates are Mon/Wed/Fri
+    
+    # Test monthly frequency
+    dates = manager.create_release_calendar(
+        "TEST1",
+        frequency="monthly",
+        monthdays="1,15",  # 1st and 15th of month
+        next_month=True
+    )
+    assert all(d.day in [1, 15] for d in dates)
+    
+    # Test interval
+    dates = manager.create_release_calendar(
+        "TEST1",
+        interval=7,  # Every 7 days
+        next_month=True
+    )
+    for i in range(len(dates) - 1):
+        assert (dates[i+1] - dates[i]).days == 7
+    
+    # Test next working day adjustment
+    dates = manager.create_release_calendar(
+        "TEST1",
+        weekdays="5,6",  # Saturday and Sunday
+        next_working_day=True,
+        next_month=True
+    )
+    assert all(d.weekday() < 5 for d in dates)  # All dates are weekdays
+
+def test_create_release_calendar_invalid_weekdays():
+    """Test creating release calendar with invalid weekdays"""
+    manager = JiraVersionManager()
+    
+    with pytest.raises(ValueError, match="Weekdays must be between 0 and 6"):
+        manager.create_release_calendar("TEST1", weekdays="7,8")
+
+def test_create_release_calendar_current_and_next_month():
+    """Test creating release calendar for current and next month"""
+    manager = JiraVersionManager()
+    
+    dates = manager.create_release_calendar(
+        "TEST1",
+        current_month=True,
+        next_month=True
+    )
+    
+    today = datetime.now()
+    next_month = today.replace(day=1) + timedelta(days=32)  # Simple way to get next month
+    
+    assert any(d.month == today.month for d in dates)  # Has dates in current month
+    assert any(d.month == next_month.month for d in dates)  # Has dates in next month
+
+def test_create_release_calendar_start_date():
+    """Test that create_release_calendar uses today's date as start_date when none is provided"""
+    manager = JiraVersionManager()
+    today = datetime.now()
+    
+    # Test with no current_month flag (should start from today)
+    dates = manager.create_release_calendar(
+        "TEST1",
+        frequency="weekly",
+        weekdays="0,1,2,3",  # Monday-Thursday
+        next_month=True
+    )
+    
+    # First date should not be before today
+    assert min(dates) >= today.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Test with current_month flag (should start from first day of month)
+    dates = manager.create_release_calendar(
+        "TEST1",
+        frequency="weekly",
+        weekdays="0,1,2,3",  # Monday-Thursday
+        current_month=True
+    )
+    
+    # First date should be in current month
+    first_date = min(dates)
+    assert first_date.year == today.year
+    assert first_date.month == today.month
+    assert first_date.day >= 1  # Should start from beginning of month
+
+@patch('requests.request')
+def test_make_request_connection_error(mock_request, manager):
+    """Test handling of connection errors in _make_request"""
+    mock_request.side_effect = requests.exceptions.ConnectionError("No network")
+    
+    with pytest.raises(JiraApiError, match="Permanent connection failure"):
+        manager._make_request('GET', 'https://jira.example.com/rest/api/2/serverInfo')
+
+@patch('requests.request')
+def test_make_request_retry_success(mock_request, manager):
+    """Test retry logic with eventual success"""
+    mock_request.side_effect = [
+        requests.exceptions.ConnectionError("Temporary failure"),
+        requests.exceptions.ConnectionError("Temporary failure"), 
+        Mock(status_code=200)
+    ]
+    
+    response = manager._make_request('GET', 'https://jira.example.com')
+    assert response.status_code == 200
+    assert mock_request.call_count == 3
+
+@patch('requests.request')
+def test_make_request_ssl_error(mock_request, manager):
+    """Test SSL error handling with guidance"""
+    mock_request.side_effect = requests.exceptions.SSLError("Certificate error")
+    
+    with pytest.raises(JiraApiError, match="SSL verification failed"):
+        manager._make_request('GET', 'https://jira.example.com')
+
+@patch('requests.head')
+def test_pre_flight_connectivity_check(mock_head, manager):
+    """Test pre-flight connectivity check failure"""
+    mock_head.side_effect = requests.exceptions.ConnectionError("DNS failure")
+    
+    with pytest.raises(JiraApiError, match="No network connection to Jira"):
+        manager._make_request('GET', 'https://jira.example.com')
+
+@patch('requests.request')
+def test_make_request_timeout_handling(mock_request, manager):
+    """Test separate handling of connection vs response timeouts"""
+    mock_request.side_effect = requests.exceptions.Timeout("Connection timed out")
+    
+    with pytest.raises(JiraApiError, match="timed out after"):
+        manager._make_request('GET', 'https://jira.example.com')
