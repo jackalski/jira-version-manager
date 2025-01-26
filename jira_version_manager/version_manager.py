@@ -961,7 +961,6 @@ class JiraVersionManager:
         
         # Parse weekdays from config or parameters
         if weekdays:
-            print(weekdays, "        <             <<<<<<<<<<<<")
             allowed_weekdays = [int(d) for d in weekdays.split(',')]
         else:
             allowed_weekdays = release_config;
