@@ -783,6 +783,10 @@ class JiraVersionManager:
                     day=parsed['DAY']
                 )
 
+                if parsed['PROJECT'] != project_key:
+                    self.logger.warning(f"{version['name']} differs from project {project_key}")
+                    parsed['PROJECT'] = project_key
+
                 new_base_name = self.create_version_name(
                     parsed['format_name'],
                     parsed['PROJECT'],
