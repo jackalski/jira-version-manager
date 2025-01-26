@@ -23,7 +23,7 @@ jobs:
     - name: Build executable
       run: |
         nuitka --standalone --onefile \
-          --enable-plugin=anti-bloat,data-files,pkg-resources,appdirs \
+          --enable-plugin=anti-bloat,data-files,pkg-resources \
           --output-filename=jira-version-manager-${{ runner.os }} \
           jira_version_manager/version_manager.py
           
