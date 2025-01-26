@@ -597,9 +597,8 @@ class JiraVersionManager:
                     issues = self.get_issues_for_version(proj_key, version['name'])
                     if issues:
                         continue
-
-                    # Check if version is more than days days old or in the future
-                    if not (include_future and version_date > current_date) or not ((current_date - version_date).days <= days):
+                    
+                    if not include_future and version_date > current_date or not (current_date - version_date).days >= days:
                         continue
                     
                     self.logger.info(f"Removing version {version['name']}")
