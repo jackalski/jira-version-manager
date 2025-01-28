@@ -1371,7 +1371,7 @@ def handle_create_command(manager: JiraVersionManager, args: argparse.Namespace)
     
     for project_key in projects:
         print(args)
-        formats = hasattr(args, 'formats') and args.formats.split(',') or None
+        formats = (hasattr(args, 'formats') and args.formats) and args.formats.split(',') or None
 
         for format_key in formats or manager.get_project_version_formats(project_key):
             current_format = manager.config['version_formats'][format_key]
