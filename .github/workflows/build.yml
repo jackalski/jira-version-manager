@@ -22,10 +22,7 @@ jobs:
       
     - name: Build executable
       run: |
-        nuitka --standalone --onefile \
-          --enable-plugin=anti-bloat,data-files,pkg-resources,appdirs \
-          --output-filename=jira-version-manager-${{ runner.os }} \
-          jira_version_manager/version_manager.py
+        nuitka --standalone --onefile --enable-plugin=anti-bloat,data-files,pkg-resources --output-filename=jira-version-manager-${{ runner.os }} jira_version_manager/version_manager.py
           
     - uses: actions/upload-artifact@v3
       with:
