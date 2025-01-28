@@ -1132,7 +1132,6 @@ def handle_key_input(key: str, manager: JiraVersionManager, args: argparse.Names
         print("\nExiting...")
         return False
     elif key == 'n':
-        print("my args key",args)
         handle_create_command(manager, args)
         print("\nExiting...")        
         return False
@@ -1704,7 +1703,6 @@ def main(args: Optional[List[str]] = None) -> int:
         }
 
         if args.command:
-            print("my args",args)
             result = command_handlers[args.command](manager, args)
             if result and args.format != "text":
                 print(format_output(result, args.format))
