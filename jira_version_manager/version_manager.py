@@ -933,8 +933,8 @@ class JiraVersionManager:
                                 start_date: Optional[str] = None, end_date: Optional[str] = None,
                                 weekdays: Optional[str] = None, monthdays: Optional[str] = None,
                                 yeardays: Optional[str] = None, days: Optional[str] = None,
-                                interval: Optional[int] = None, current_month: bool = True,
-                                next_month: bool = True, next_working_day: bool = False) -> List[datetime]:
+                                interval: Optional[int] = None, current_month: bool = False,
+                                next_month: bool = False, next_working_day: bool = False) -> List[datetime]:
         """Create a calendar of release dates based on various parameters.
         
         Args:
@@ -976,23 +976,29 @@ class JiraVersionManager:
         today = datetime.now()
         dates = []
         
-        # Calculate start and end dates based on current/next month flags
-        start_date = today  # Start from today
-        
+        # Calculate start and end dates based on current/next month flagsx``
+        if start_date is None:
+            start_date = today  # Start from today
+        elif start_date:
+            start_date = datetime.strptime(start_date, '%Y-%m-%d')
+
+        if end_date is not None:
+            end_date = datetime.strptime(end_date, '%Y-%m-%d')
+
         # Calculate end date
         if next_month:
             if start_date.month == 12:
-                end_date = datetime(start_date.year + 1, 1, 1)
+                end_date = datetime(today.year + 1, 1, 1)
             else:
-                end_date = datetime(start_date.year, start_date.month + 2, 1)
-        else:
+                end_date = datetime(today.year, today.month + 2, 1)
+        elif current_month:
             if start_date.month == 12:
-                end_date = datetime(start_date.year + 1, 1, 1)
+                end_date = datetime(today.year + 1, 1, 1)
             else:
-                end_date = datetime(start_date.year, start_date.month + 1, 1)
+                end_date = datetime(today.year, today.month + 1, 1)
         
         current_date = start_date
-        while current_date < end_date:
+        while current_date <= end_date:
             # Check if the current date matches our criteria
             if frequency == 'weekly':
                 # Only include dates that fall on specified weekdays
@@ -1126,6 +1132,7 @@ def handle_key_input(key: str, manager: JiraVersionManager, args: argparse.Names
         print("\nExiting...")
         return False
     elif key == 'n':
+        print("my args key",args)
         handle_create_command(manager, args)
         print("\nExiting...")        
         return False
@@ -1252,8 +1259,8 @@ def create_parser() -> argparse.ArgumentParser:
     date_group.add_argument('-dd', '--days', help='Comma-separated list of days (1-365) to create versions on (default: 1 to 365)')
     date_group.add_argument('-id', '--interval', type=int, help='Interval (in days) between versions (default: 1)')
     
-    date_group.add_argument('-cm', '--current-month', action='store_true', default=True, help='Create versions for current month (default: True)')
-    date_group.add_argument('-nm', '--next-month', action='store_true', default=True, help='Create versions for next month (default: True)')
+    date_group.add_argument('-cm', '--current-month', action='store_true', default=False, help='Create versions for current month (default: True)')
+    date_group.add_argument('-nm', '--next-month', action='store_true', default=False, help='Create versions for next month (default: True)')
 
     # Add semantic versioning group
     semantic_group = create_parser.add_argument_group('semantic versioning', description='Semantic versioning options, compatible with semantic versioning specification (https://semver.org/)')
@@ -1370,7 +1377,6 @@ def handle_create_command(manager: JiraVersionManager, args: argparse.Namespace)
         manager.logger.info("DRY RUN: The following versions would be created:")
     
     for project_key in projects:
-        print(args)
         formats = (hasattr(args, 'formats') and args.formats) and args.formats.split(',') or None
 
         for format_key in formats or manager.get_project_version_formats(project_key):
@@ -1455,7 +1461,7 @@ def handle_create_command(manager: JiraVersionManager, args: argparse.Namespace)
 
                 # Handle date-based versions
                 manager.logger.debug(f"Format contains date-based versions: {current_format}")
-                
+                                
                 try:
                     if hasattr(args, 'date') and args.date:
                         # Create versions for specific date
@@ -1473,8 +1479,8 @@ def handle_create_command(manager: JiraVersionManager, args: argparse.Namespace)
                             yeardays=hasattr(args, 'yeardays') and args.yeardays or None,
                             days=hasattr(args, 'days') and args.days or None,
                             interval=hasattr(args, 'interval') and args.interval or None,
-                            current_month=hasattr(args, 'current_month') and args.current_month or True,
-                            next_month=hasattr(args, 'next_month') and args.next_month or True,
+                            current_month=hasattr(args, 'current_month') and args.current_month or False,
+                            next_month=hasattr(args, 'next_month') and args.next_month or False,
                             next_working_day=hasattr(args, 'next_working_day') and args.next_working_day or False
                         )
                     if args.dry_run:
@@ -1698,6 +1704,7 @@ def main(args: Optional[List[str]] = None) -> int:
         }
 
         if args.command:
+            print("my args",args)
             result = command_handlers[args.command](manager, args)
             if result and args.format != "text":
                 print(format_output(result, args.format))
